@@ -1,0 +1,142 @@
+{
+  "name": "flow-forge",
+  "version": "1.0.0",
+  "description": "A modular, company-agnostic process orchestration and workflow management platform built with Electron, React, and TypeScript",
+  "private": false,
+  "license": "MIT",
+  "author": "FlowForge Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/flow-forge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/flow-forge/issues"
+  },
+  "homepage": "https://github.com/yourusername/flow-forge#readme",
+  "keywords": [
+    "electron",
+    "react",
+    "typescript",
+    "workflow",
+    "orchestration",
+    "process-management",
+    "modular",
+    "plugin-system"
+  ],
+  "type": "module",
+  "main": "out/main/main.js",
+  "scripts": {
+    "electron:dev": "electron-vite dev",
+    "electron:dev:log": "electron-vite dev 2>&1 | tee /tmp/flowforge-dev.log",
+    "build:mac": "eslint . && electron-vite build && electron-builder --mac",
+    "test:all": "node tests/validate-schemas.test.js && node tests/validate-electron-compilation.test.js && node tests/validate-electron-startup.test.js",
+    "postinstall": "electron-rebuild -f -w better-sqlite3 -w node-pty"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@monaco-editor/react": "^4.7.0",
+    "@mui/icons-material": "^7.2.0",
+    "@mui/material": "^7.2.0",
+    "@types/js-yaml": "^4.0.9",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.5.0",
+    "better-sqlite3": "^12.4.1",
+    "drizzle-orm": "^0.45.0",
+    "drizzle-zod": "^0.8.3",
+    "electron-log": "^5.4.3",
+    "js-yaml": "^4.1.0",
+    "lucide-react": "^0.344.0",
+    "node-pty": "^1.1.0",
+    "react": "^18.3.1",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
+    "react-dom": "^18.3.1",
+    "vis-data": "^8.0.1",
+    "vis-network": "^10.0.1",
+    "zod": "^4.1.13",
+    "zustand": "^5.0.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.9.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.1.0",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.18",
+    "concurrently": "^9.2.0",
+    "drizzle-kit": "^0.31.8",
+    "electron": "^33.4.11",
+    "electron-builder": "^26.0.12",
+    "electron-rebuild": "^3.2.9",
+    "electron-vite": "^5.0.0",
+    "eslint": "^9.9.1",
+    "eslint-plugin-react-hooks": "^5.1.0-rc.0",
+    "eslint-plugin-react-refresh": "^0.4.11",
+    "globals": "^15.9.0",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.5.3",
+    "typescript-eslint": "^8.3.0",
+    "vite": "^5.4.2",
+    "wait-on": "^8.0.4"
+  },
+  "build": {
+    "appId": "com.flowforge.app",
+    "productName": "FlowForge",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "config.templates",
+        "to": "config.templates"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

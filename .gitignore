@@ -1,0 +1,63 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+out
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Build and release directories
+release/
+build/
+*.asar
+
+# Large files that exceed GitHub's 100MB limit
+release/linux-unpacked/
+release/mac/
+release/win/
+
+# Legacy state files (now using SQLite database)
+.service-state.json
+
+# Database files (user-specific data)
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+flowforge.db
+
+# Drizzle migrations metadata (keep SQL files, ignore journal)
+electron/database/migrations/journal.json
+
+# User-specific configuration files (LOCAL DEV ONLY)
+# These should NOT be committed as they contain local paths, credentials, etc.
+# Development: config/ contains your real local settings (gitignored)
+# Production: User configs stored in ~/Library/Application Support/FlowForge/config/
+# Templates: config.templates/ contains generic examples (version controlled)
+config/
+!config/.gitkeep
+
+# Keep templates in the repository (shipped with the app)
+!config.templates/
+data/
+
+# AI tool configs
+.claude/

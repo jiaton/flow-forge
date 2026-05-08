@@ -1,0 +1,21 @@
+# Infrastructure Service Example
+# This demonstrates an infrastructure component (database)
+
+serviceId: "database"
+
+name: "PostgreSQL Database"
+type: "Database"
+description: "Main application database"
+port: 5432
+path: ""  # Docker container - no local path
+
+commands:
+  start: "docker start my-postgres"
+  stop: "docker stop my-postgres"
+  check: "docker ps | grep my-postgres"
+
+environments:
+  local: "postgresql://localhost:5432/mydb"
+  dev: "postgresql://dev-db.example.com:5432/mydb"
+  stage: "postgresql://stage-db.example.com:5432/mydb"
+  prod: "postgresql://prod-db.example.com:5432/mydb"

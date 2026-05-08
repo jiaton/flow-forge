@@ -1,0 +1,30 @@
+# Backend Service Example
+# This demonstrates a typical backend API service configuration
+
+serviceId: "api-service"
+
+name: "API Service"
+type: "Backend API"
+description: "Main backend API service"
+port: 8080
+path: "$HOME/projects/api-service"
+
+# Optional: Git provider configuration
+git:
+  projectId: "12345"
+  defaultReviewers:
+    - "developer1"
+    - "developer2"
+
+# Commands for managing the service
+commands:
+  start: "cd $HOME/projects/api-service && npm start"
+  stop: "pkill -f 'api-service'"
+  check: "pgrep -f 'api-service'"
+
+# Environment URLs
+environments:
+  local: "http://localhost:8080"
+  dev: "https://api-dev.example.com"
+  stage: "https://api-stage.example.com"
+  prod: "https://api.example.com"

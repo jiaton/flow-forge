@@ -1,0 +1,24 @@
+# Microservice Example
+# This demonstrates a microservice configuration
+
+serviceId: "payment-service"
+
+name: "Payment Service"
+type: "Microservice"
+description: "Handles payment processing and transactions"
+port: 5000
+path: "$HOME/projects/payment-service"
+
+git:
+  projectId: "67890"
+
+commands:
+  start: "cd $HOME/projects/payment-service && ./gradlew run"
+  stop: "pkill -f 'payment-service'"
+  check: "pgrep -f 'payment-service'"
+
+environments:
+  local: "http://localhost:5000"
+  dev: "https://payment-dev.example.com"
+  stage: "https://payment-stage.example.com"
+  prod: "https://payment.example.com"

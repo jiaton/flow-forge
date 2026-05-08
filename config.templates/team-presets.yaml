@@ -1,0 +1,93 @@
+# Team Presets Configuration Example
+# Define teams and which services they use
+
+teams:
+  # Backend Development Team
+  backend-team:
+    name: "Backend Team"
+    description: "Backend API and microservices development"
+    color: "#1976d2"
+    icon: "Code"
+
+    # Services this team typically uses (references serviceId from services/)
+    presetServices:
+      - "api-service"     # References config/services/backend/api-service.yaml
+      - "database"        # References config/services/infrastructure/database.yaml
+      - "payment-service" # References config/services/microservices/payment-service.yaml
+
+    # Module overrides for this team
+    modules:
+      service-orchestrator:
+        enabled: true
+        order: 1
+      git-manager:
+        enabled: true
+        order: 2
+
+    # Team-specific JSON templates
+    jsonTemplates:
+      - id: "api-spec"
+        name: "API Specification"
+        description: "OpenAPI specification template"
+        category: "API"
+
+  # Frontend Development Team
+  frontend-team:
+    name: "Frontend Team"
+    description: "Web and mobile application development"
+    color: "#4caf50"
+    icon: "Devices"
+
+    presetServices:
+      - "web-app"        # Frontend application
+      - "api-service"    # Backend API they consume
+
+    modules:
+      service-orchestrator:
+        enabled: true
+      git-manager:
+        enabled: true
+
+    jsonTemplates:
+      - id: "component-spec"
+        name: "Component Spec"
+        description: "React component specification"
+        category: "Frontend"
+
+  # Full Stack Team
+  fullstack-team:
+    name: "Full Stack Team"
+    description: "End-to-end feature development"
+    color: "#ff9800"
+    icon: "Layers"
+
+    # Full stack teams use both frontend and backend services
+    presetServices:
+      - "web-app"
+      - "api-service"
+      - "payment-service"
+      - "database"
+
+    modules:
+      service-orchestrator:
+        enabled: true
+      git-manager:
+        enabled: true
+      flow-visualizer:
+        enabled: true
+
+    jsonTemplates: []
+
+# Base menu items (shared across all teams)
+baseMenuItems:
+  - id: "overview"
+    label: "Overview"
+    icon: "Dashboard"
+
+  - id: "services"
+    label: "Services"
+    icon: "Settings"
+
+  - id: "git"
+    label: "Git"
+    icon: "GitHub"

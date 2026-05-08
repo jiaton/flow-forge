@@ -1,0 +1,14 @@
+# Global Settings
+# Configure your preferred IDE(s) for opening services.
+#
+# Single IDE:
+#   ide:
+#     command: code
+#
+# Multiple IDEs (shows submenu in context menu):
+#   ide:
+#     - command: code-insiders
+#     - command: idea
+
+ide:
+  command: code

@@ -1,0 +1,110 @@
+# Application Configuration Example
+# Main application settings and environment definitions
+
+app:
+  name: "FlowForge"
+  version: "1.0.0"
+  environment: "development"  # Current environment: development, production, etc.
+  description: "Your application description"
+
+# Environment definitions
+environments:
+  local:
+    name: "Local Development"
+    description: "Local development environment"
+
+  dev:
+    name: "Development"
+    description: "Development environment"
+
+  stage:
+    name: "Staging"
+    description: "Staging environment"
+
+  prod:
+    name: "Production"
+    description: "Production environment"
+
+# External services and integrations
+otherServices:
+  # Git provider configuration
+  git:
+    provider: "gitlab"  # or "github", "bitbucket"
+    name: "GitLab"
+    description: "Git repository and MR tracking"
+    baseUrl: "https://git.example.com"
+    apiUrl: "https://git.example.com/api/v4"
+    # Default reviewers (can be overridden per service)
+    defaultReviewers:
+      - "reviewer1"
+      - "reviewer2"
+
+  # Other external services
+  teamspace:
+    name: "Teamspace"
+    description: "Team collaboration platform"
+    baseUrl: "https://teamspace.example.com"
+
+# Feature flags
+features:
+  notifications:
+    enabled: true
+    position: "top-right"
+    duration: 5000
+
+  analytics:
+    enabled: false
+
+  debug:
+    enabled: true
+    logLevel: "info"
+
+# UI Configuration
+ui:
+  theme:
+    default: "light"
+    allowUserOverride: true
+    primaryColor: "#1976d2"
+
+  sidebar:
+    defaultCollapsed: false
+    width: 280
+    collapsedWidth: 64
+
+# Modules — define which features are available
+modules:
+  dashboard:
+    name: "Dashboard"
+    description: "Overview of services and quick actions"
+    version: "1.0.0"
+    icon: "Dashboard"
+    route: "dashboard"
+    enabled: true
+    order: 10
+    teamSpecific: false
+
+  service-orchestrator:
+    name: "Service Orchestrator"
+    description: "Start, stop, and manage local services"
+    version: "1.0.0"
+    icon: "Settings"
+    route: "service-orchestrator"
+    enabled: true
+    order: 20
+    teamSpecific: true
+    config:
+      maxConcurrentServices: 10
+      defaultExecutionMode: "internal"
+
+  mr-manager:
+    name: "MR Manager"
+    description: "Track and manage merge requests"
+    version: "1.0.0"
+    icon: "MergeType"
+    route: "mr-manager"
+    enabled: true
+    order: 30
+    teamSpecific: false
+    config:
+      refreshInterval: 300000
+      autoRefresh: true

@@ -1,0 +1,21 @@
+# Frontend Application Example
+# This demonstrates a frontend web application configuration
+
+serviceId: "web-app"
+
+name: "Web Application"
+type: "Frontend Application"
+description: "Main customer-facing web application"
+port: 3000
+path: "$HOME/projects/web-app"
+
+commands:
+  start: "cd $HOME/projects/web-app && npm run dev"
+  stop: "pkill -f 'web-app'"
+  check: "lsof -ti:3000"
+
+environments:
+  local: "http://localhost:3000"
+  dev: "https://dev.example.com"
+  stage: "https://stage.example.com"
+  prod: "https://www.example.com"
