@@ -1,18 +1,18 @@
 {
   "name": "flow-forge",
-  "version": "1.0.0",
+  "version": "2.0.1",
   "description": "A modular, company-agnostic process orchestration and workflow management platform built with Electron, React, and TypeScript",
   "private": false,
   "license": "MIT",
   "author": "FlowForge Contributors",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/flow-forge.git"
+    "url": "https://github.com/jiaton/flow-forge.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/flow-forge/issues"
+    "url": "https://github.com/jiaton/flow-forge/issues"
   },
-  "homepage": "https://github.com/yourusername/flow-forge#readme",
+  "homepage": "https://github.com/jiaton/flow-forge#readme",
   "keywords": [
     "electron",
     "react",
