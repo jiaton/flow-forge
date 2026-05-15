@@ -52,8 +52,8 @@ electron/database/migrations/journal.json
 # Development: config/ contains your real local settings (gitignored)
 # Production: User configs stored in ~/Library/Application Support/FlowForge/config/
 # Templates: config.templates/ contains generic examples (version controlled)
-config/
-!config/.gitkeep
+/config/
+!/config/.gitkeep
 
 # Keep templates in the repository (shipped with the app)
 !config.templates/
