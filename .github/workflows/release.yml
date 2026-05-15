@@ -16,12 +16,12 @@ jobs:
           node-version: 22
           cache: npm
 
+      - run: npm ci
+
       - name: Sync package.json version from tag
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           npm version "$VERSION" --no-git-tag-version
-
-      - run: npm ci
 
       - run: npm run build:mac
         env:
