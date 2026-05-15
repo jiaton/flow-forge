@@ -376,6 +376,21 @@ declare global {
           delete: (mrId: number) => Promise<{ success: boolean; error?: string }>;
         };
       };
+
+      // ─── Modular IPC ───────────────────────────────────────────
+      modules: {
+        invoke: (channel: string, ...args: any[]) => Promise<any>;
+      };
+
+      // Command Palette
+      commandPalette: {
+        getConfig: () => Promise<any>;
+        getCachedTree: (binary: string) => Promise<any>;
+        introspect: (binary: string) => Promise<any>;
+        checkVersion: (binary: string) => Promise<{ current: string; cached: string | null; stale: boolean }>;
+        execute: (command: string) => Promise<void>;
+        copyIntrospectPrompt: (binary: string) => Promise<{ copied: boolean }>;
+      };
     };
   }
 }

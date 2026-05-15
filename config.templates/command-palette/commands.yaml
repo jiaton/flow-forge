@@ -1,0 +1,66 @@
+# Command Palette Configuration
+# Add CLI tools here to enable autocomplete and introspection.
+# Edit this file in your IDE — the app reloads it automatically.
+
+commands:
+  - binary: "gh"
+    helpFlag: "--help"
+    versionFlag: "--version"
+
+  - binary: "docker"
+    helpFlag: "--help"
+    versionFlag: "--version"
+
+  - binary: "git"
+    helpFlag: "--help"
+    versionFlag: "--version"
+
+  # Add your own CLIs:
+  # - binary: "kubectl"
+  #   helpFlag: "--help"
+  #   versionFlag: "version --client --short"
+  #
+  # For CLIs with non-standard help (e.g., aws uses "help" not "--help"):
+  # - binary: "aws"
+  #   helpFlag: "help"
+  #   versionFlag: "--version"
+  #   parser:
+  #     commandPattern: "^\\s{2,}(\\S+)\\s{2,}(.+)$"
+  #     stopPattern: "^SEE ALSO"
+
+templates:
+  - id: "create-pr"
+    name: "Create PR"
+    command: "gh pr create --title \"${TITLE}\" --body \"${BODY}\""
+    variables:
+      TITLE: { prompt: "PR title", default: "" }
+      BODY: { prompt: "PR description", default: "" }
+
+  - id: "create-mr"
+    name: "Create MR"
+    command: "glab mr create --title \"${TITLE}\" --target-branch ${TARGET}"
+    variables:
+      TITLE: { prompt: "MR title", default: "" }
+      TARGET: { prompt: "Target branch", default: "main" }
+
+  - id: "mr-checkout"
+    name: "Checkout MR"
+    command: "glab mr checkout ${MR_ID}"
+    variables:
+      MR_ID: { prompt: "MR number", default: "" }
+
+  - id: "ci-retry"
+    name: "Retry Pipeline (current branch)"
+    command: "glab ci retry"
+
+  - id: "docker-up"
+    name: "Docker Compose Up"
+    command: "docker compose up -d ${SERVICES}"
+    variables:
+      SERVICES: { prompt: "Services (blank for all)", default: "" }
+
+  - id: "interactive-rebase"
+    name: "Interactive Rebase"
+    command: "git rebase -i HEAD~${COUNT}"
+    variables:
+      COUNT: { prompt: "Number of commits", default: "3" }

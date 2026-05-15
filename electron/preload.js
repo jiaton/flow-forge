@@ -161,4 +161,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
       delete: (mrId) => ipcRenderer.invoke('mr:delete', mrId),
     },
   },
+
+  // ─── Modular IPC ───────────────────────────────────────────────
+  // Generic invoke for auto-discovered modules.
+  // Convention: modules use namespaced channels like "moduleName:method"
+  // Frontend calls: window.electronAPI.modules.invoke('commandPalette:getConfig')
+  modules: {
+    invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+  },
+
+  // Command Palette (convenience wrapper over modules.invoke)
+  commandPalette: {
+    getConfig: () => ipcRenderer.invoke('commandPalette:getConfig'),
+    getCachedTree: (binary) => ipcRenderer.invoke('commandPalette:getCachedTree', binary),
+    introspect: (binary) => ipcRenderer.invoke('commandPalette:introspect', binary),
+    checkVersion: (binary) => ipcRenderer.invoke('commandPalette:checkVersion', binary),
+    execute: (command) => ipcRenderer.invoke('commandPalette:execute', command),
+    copyIntrospectPrompt: (binary) => ipcRenderer.invoke('commandPalette:copyIntrospectPrompt', binary),
+    onIntrospectProgress: (callback) => {
+      ipcRenderer.on('commandPalette:introspectProgress', (_, msg) => callback(msg));
+    },
+    offIntrospectProgress: () => {
+      ipcRenderer.removeAllListeners('commandPalette:introspectProgress');
+    },
+    onConfigChanged: (callback) => {
+      ipcRenderer.on('commandPalette:configChanged', () => callback());
+    },
+    offConfigChanged: () => {
+      ipcRenderer.removeAllListeners('commandPalette:configChanged');
+    },
+  },
 }); 

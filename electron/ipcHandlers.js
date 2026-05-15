@@ -491,12 +491,22 @@ function setupRoutineHandlers(mainWindow) {
   });
 }
 
+import { loadModuleHandlers } from './module-loader.js';
+import { configManager } from './utils/configManager.js';
+
 // Initialize all IPC handlers
-export function setupIpcHandlers(mainWindow) {
+export async function setupIpcHandlers(mainWindow) {
   setupConfigurationHandlers(mainWindow);
   setupServiceHandlers();
   setupDatabaseIpcHandlers();
   setupLogLevelHandlers();
   setupPtyHandlers(mainWindow);
   setupRoutineHandlers(mainWindow);
+
+  // Auto-discover and load modular backend handlers
+  await configManager.initializePaths();
+  await loadModuleHandlers({
+    mainWindow,
+    configDir: configManager.userConfigDir,
+  });
 }
