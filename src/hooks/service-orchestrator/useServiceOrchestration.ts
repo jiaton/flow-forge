@@ -27,17 +27,39 @@ export const useServiceOrchestration = (_viewId: string) => {
 
       setIsLoading(true);
       try {
-        // Load service states and detached preferences in parallel
-        const [dbStates, detachedPref] = await Promise.all([
+        // Load service states, detached preferences, and orchestration list in parallel
+        const [dbStates, detachedPref, orchestrationPref] = await Promise.all([
           ServiceManager.loadTeamServiceStates(selectedTeam),
           window.electronAPI?.db?.appSettings?.get('detachedServices'),
+          window.electronAPI?.db?.appSettings?.get(`orchestratedServices:${selectedTeam}`),
         ]);
 
         const detachedMap: Record<string, boolean> = detachedPref
           ? JSON.parse(detachedPref)
           : {};
 
-        if (dbStates.length > 0) {
+        // Restore orchestration list from persisted IDs
+        const orchestratedIds: string[] = orchestrationPref
+          ? JSON.parse(orchestrationPref)
+          : [];
+
+        if (orchestratedIds.length > 0) {
+          const servicesWithState = teamConfig.services
+            .filter(service => orchestratedIds.includes(service.id))
+            .map(service => {
+              const dbState = dbStates.find(s => s.id === service.id);
+              return {
+                ...service,
+                status: dbState ? mapStateToStatus(dbState.state) : service.status,
+                detached: detachedMap[service.id] ?? true,
+              };
+            });
+
+          if (servicesWithState.length > 0) {
+            setOrchestratedServices(servicesWithState);
+            setSelectedServices(new Set(servicesWithState.map(s => s.id)));
+          }
+        } else if (dbStates.length > 0) {
           const servicesWithState = teamConfig.services
             .map(service => {
               const dbState = dbStates.find(s => s.id === service.id);
@@ -104,14 +126,30 @@ export const useServiceOrchestration = (_viewId: string) => {
   }, []);
 
   /**
+   * Persist orchestrated service IDs to DB
+   */
+  const persistOrchestrationList = useCallback(async (services: Service[]) => {
+    try {
+      const ids = services.map(s => s.id);
+      await window.electronAPI?.db?.appSettings?.set(
+        `orchestratedServices:${selectedTeam}`,
+        JSON.stringify(ids)
+      );
+    } catch (error) {
+      console.error('Failed to persist orchestration list:', error);
+    }
+  }, [selectedTeam]);
+
+  /**
    * Add single service directly to orchestration (for drag-and-drop)
    */
   const addService = useCallback((service: Service) => {
-    // Check for duplication
     if (!orchestratedServices.find(s => s.id === service.id)) {
-      setOrchestratedServices(prev => [...prev, service]);
+      const updated = [...orchestratedServices, service];
+      setOrchestratedServices(updated);
+      persistOrchestrationList(updated);
     }
-  }, [orchestratedServices]);
+  }, [orchestratedServices, persistOrchestrationList]);
 
   /**
    * Add selected services to orchestration (legacy - kept for backward compatibility)
@@ -122,27 +160,32 @@ export const useServiceOrchestration = (_viewId: string) => {
         selectedServices.has(service.id) &&
         !orchestratedServices.find(s => s.id === service.id)
     );
-    setOrchestratedServices(prev => [...prev, ...servicesToAdd]);
+    const updated = [...orchestratedServices, ...servicesToAdd];
+    setOrchestratedServices(updated);
+    persistOrchestrationList(updated);
     setSelectedServices(new Set());
-  }, [selectedServices, orchestratedServices, teamConfig.services]);
+  }, [selectedServices, orchestratedServices, teamConfig.services, persistOrchestrationList]);
 
   /**
    * Remove service from orchestration
    */
   const removeFromOrchestration = useCallback((serviceId: string) => {
-    setOrchestratedServices(prev => prev.filter(s => s.id !== serviceId));
+    const updated = orchestratedServices.filter(s => s.id !== serviceId);
+    setOrchestratedServices(updated);
+    persistOrchestrationList(updated);
     setSelectedServices(prev => {
       const newSet = new Set(prev);
       newSet.delete(serviceId);
       return newSet;
     });
-  }, []);
+  }, [orchestratedServices, persistOrchestrationList]);
 
   /**
    * Clear all orchestrated services
    */
   const clearOrchestration = useCallback(() => {
     setOrchestratedServices([]);
+    persistOrchestrationList([]);
     setSelectedServices(new Set());
   }, []);
 

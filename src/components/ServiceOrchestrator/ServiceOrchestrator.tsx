@@ -168,9 +168,6 @@ const ServiceOrchestrator: React.FC<ServiceOrchestratorProps> = ({ viewId }) => 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <ServiceOrchestratorHeader
-        orchestratedServices={orchestratedServices}
-        onExecute={handleExecuteOrchestration}
-        onStopAll={handleStopAll}
         onShowConfig={() => setShowConfigDialog(true)}
         onShowRoutines={() => setShowRoutinesDialog(true)}
         onLogLevelChange={handleLogLevelChange}
@@ -187,6 +184,8 @@ const ServiceOrchestrator: React.FC<ServiceOrchestratorProps> = ({ viewId }) => 
         onServiceClick={handleServiceClick}
         onViewLogs={viewLogs}
         onClearAll={clearOrchestration}
+        onStartAll={handleExecuteOrchestration}
+        onStopAll={handleStopAll}
         onStartService={startService}
         onStopService={stopService}
         onForceStopService={forceStopService}

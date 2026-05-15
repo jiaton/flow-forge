@@ -30,7 +30,7 @@
     "electron:dev:log": "electron-vite dev 2>&1 | tee /tmp/flowforge-dev.log",
     "build:mac": "eslint . && electron-vite build && electron-builder --mac",
     "test:all": "node tests/validate-schemas.test.js && node tests/validate-electron-compilation.test.js && node tests/validate-electron-startup.test.js",
-    "postinstall": "electron-rebuild -f -w better-sqlite3 -w node-pty"
+    "postinstall": "electron-rebuild -f -w better-sqlite3,node-pty"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

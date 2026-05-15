@@ -3,14 +3,9 @@ import {
   Box, Button, Select, MenuItem, FormControl, InputLabel,
   ButtonGroup, Popper, Grow, Paper, ClickAwayListener, MenuList,
 } from '@mui/material';
-import { PlayArrow, Stop, Settings, AutoMode, ArrowDropDown, Terminal } from '@mui/icons-material';
-import { Service } from './types';
-import { SERVICE_STATUS } from '../../shared/constants/service';
+import { Settings, AutoMode, ArrowDropDown, Terminal } from '@mui/icons-material';
 
 interface ServiceActionsProps {
-  orchestratedServices: Service[];
-  onExecute: () => void;
-  onStopAll: () => void;
   onShowConfig: () => void;
   onShowRoutines: () => void;
   onLogLevelChange: (level: 'error' | 'warn' | 'info' | 'debug' | 'verbose') => void;
@@ -20,9 +15,6 @@ interface ServiceActionsProps {
 }
 
 const ServiceActions: React.FC<ServiceActionsProps> = ({
-  orchestratedServices,
-  onExecute,
-  onStopAll,
   onShowConfig,
   onShowRoutines,
   onLogLevelChange,
@@ -30,37 +22,12 @@ const ServiceActions: React.FC<ServiceActionsProps> = ({
   activeRoutineNames,
   onShowActiveRoutine,
 }) => {
-  const runningServicesCount = orchestratedServices.filter(s => s.status === SERVICE_STATUS.RUNNING).length;
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement>(null);
   const hasActive = activeRoutineNames && activeRoutineNames.length > 0;
 
   return (
     <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
-      <Button
-        startIcon={<PlayArrow />}
-        sx={{ whiteSpace: 'nowrap' }}
-        variant="contained"
-        color="success"
-        size="small"
-        onClick={onExecute}
-        disabled={orchestratedServices.length === 0}
-      >
-        Execute ({orchestratedServices.length})
-      </Button>
-
-      <Button
-        startIcon={<Stop />}
-        variant="outlined"
-        color="error"
-        size="small"
-        onClick={onStopAll}
-        disabled={runningServicesCount === 0}
-        sx={{ whiteSpace: 'nowrap' }}
-      >
-        Stop All
-      </Button>
-
       {/* Routines split button */}
       <ButtonGroup variant="outlined" size="small" ref={anchorRef}>
         <Button startIcon={<AutoMode />} onClick={onShowRoutines}>

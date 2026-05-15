@@ -1,23 +1,17 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
 import ServiceActions from './ServiceActions';
-import { Service } from './types';
 
 interface ServiceOrchestratorHeaderProps {
-  orchestratedServices: Service[];
-  onExecute: () => void;
-  onStopAll: () => void;
   onShowConfig: () => void;
   onShowRoutines: () => void;
   onLogLevelChange: (level: 'error' | 'warn' | 'info' | 'debug' | 'verbose') => void;
   logLevel: 'error' | 'warn' | 'info' | 'debug' | 'verbose';
   activeRoutineNames?: string[] | null;
-  onShowActiveRoutine?: (id: string) => void;}
+  onShowActiveRoutine?: (id: string) => void;
+}
 
 const ServiceOrchestratorHeader: React.FC<ServiceOrchestratorHeaderProps> = ({
-  orchestratedServices,
-  onExecute,
-  onStopAll,
   onShowConfig,
   onShowRoutines,
   onLogLevelChange,
@@ -34,9 +28,6 @@ const ServiceOrchestratorHeader: React.FC<ServiceOrchestratorHeaderProps> = ({
 
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
           <ServiceActions
-            orchestratedServices={orchestratedServices}
-            onExecute={onExecute}
-            onStopAll={onStopAll}
             onShowConfig={onShowConfig}
             onShowRoutines={onShowRoutines}
             onLogLevelChange={onLogLevelChange}

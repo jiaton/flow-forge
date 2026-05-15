@@ -12,6 +12,8 @@ interface ServiceOrchestratorContentProps {
   onServiceClick: (service: Service) => void;
   onViewLogs: (service: Service) => void;
   onClearAll: () => void;
+  onStartAll: () => void;
+  onStopAll: () => void;
   onStartService: (service: Service) => void;
   onStopService: (service: Service) => void;
   onForceStopService: (service: Service) => void;
@@ -33,6 +35,8 @@ const ServiceOrchestratorContent: React.FC<ServiceOrchestratorContentProps> = ({
   onServiceClick,
   onViewLogs,
   onClearAll,
+  onStartAll,
+  onStopAll,
   onStartService,
   onStopService,
   onForceStopService,
@@ -64,6 +68,8 @@ const ServiceOrchestratorContent: React.FC<ServiceOrchestratorContentProps> = ({
           onServiceClick={onServiceClick}
           onViewLogs={onViewLogs}
           onClearAll={onClearAll}
+          onStartAll={onStartAll}
+          onStopAll={onStopAll}
           onStartService={onStartService}
           onStopService={onStopService}
           onForceStopService={onForceStopService}

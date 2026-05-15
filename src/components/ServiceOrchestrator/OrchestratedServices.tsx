@@ -33,6 +33,8 @@ interface OrchestratedServicesProps {
   onServiceClick: (service: Service) => void;
   onViewLogs: (service: Service) => void;
   onClearAll: () => void;
+  onStartAll: () => void;
+  onStopAll: () => void;
   onStartService: (service: Service) => void;
   onStopService: (service: Service) => void;
   onForceStopService: (service: Service) => void;
@@ -53,6 +55,8 @@ const OrchestratedServices: React.FC<OrchestratedServicesProps> = ({
   onServiceClick,
   onViewLogs,
   onClearAll,
+  onStartAll,
+  onStopAll,
   onStartService,
   onStopService,
   onForceStopService,
@@ -127,13 +131,32 @@ const OrchestratedServices: React.FC<OrchestratedServicesProps> = ({
           {services.length > 0 && (
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Button
+                startIcon={<PlayArrow />}
+                variant="contained"
+                color="success"
+                size="small"
+                onClick={onStartAll}
+              >
+                Start All ({services.length})
+              </Button>
+              <Button
+                startIcon={<Stop />}
+                variant="outlined"
+                color="error"
+                size="small"
+                onClick={onStopAll}
+                disabled={services.filter(s => s.status === SERVICE_STATUS.RUNNING).length === 0}
+              >
+                Stop All
+              </Button>
+              <Button
                 startIcon={<Refresh />}
                 variant="outlined"
                 size="small"
                 onClick={onRefreshStatuses}
                 color="primary"
               >
-                Refresh Status
+                Refresh
               </Button>
               <Button
                 startIcon={<Clear />}
@@ -142,7 +165,7 @@ const OrchestratedServices: React.FC<OrchestratedServicesProps> = ({
                 onClick={onClearAll}
                 color="error"
               >
-                Clear All
+                Clear
               </Button>
             </Box>
           )}
