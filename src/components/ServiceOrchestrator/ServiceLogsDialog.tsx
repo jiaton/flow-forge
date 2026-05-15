@@ -87,6 +87,7 @@ const ServiceLogsDialog: React.FC<ServiceLogsDialogProps> = ({
       onClose={onClose}
       maxWidth="lg"
       fullWidth
+      keepMounted
       disableEnforceFocus
       PaperProps={{ sx: { height: '80vh' } }}
     >
@@ -158,7 +159,7 @@ const ServiceLogsDialog: React.FC<ServiceLogsDialogProps> = ({
               pendingCommand={pendingCommand}
               consumePendingCommand={consumePendingCommand}
               quickCommands={service.quickCommands}
-              keepAlive={service.id.startsWith('routine:')}
+              keepAlive
             />
           </Box>
         )}
