@@ -10,7 +10,7 @@ A modular, company-agnostic process orchestration and workflow management platfo
 - **Git Manager** - Track merge requests/pull requests across GitLab, GitHub, and more
 - **Dark/Light Theme** - Beautiful Material-UI interface with theme support
 - **Flexible YAML Configuration** - User-editable configuration with no hardcoded service definitions
-- **Cross-Platform** - Works on macOS, Windows, and Linux
+- **macOS Native** - Built and tested for macOS (Apple Silicon & Intel)
 
 ## Quick Start
 
@@ -27,11 +27,14 @@ npm run electron:build
 
 ## Configuration
 
-FlowForge uses YAML configuration files that are **automatically initialized** from examples on first run. Configuration files are stored in your user data directory:
+FlowForge uses YAML configuration files with environment-aware path resolution:
 
-- **macOS**: `~/.flowforge/config/`
-- **Windows**: `~/.flowforge/config/`
-- **Linux**: `~/.flowforge/config/`
+| Mode | Config Location | Use Case |
+|------|----------------|----------|
+| **Production** (built app) | `~/.flowforge/config/` | End users with the desktop app |
+| **Development** (`npm run electron:dev`) | `<project-root>/config/` | Developers working on FlowForge |
+
+> **Note:** If you want to use the built-in example configs and team presets, use the [built desktop app](../../releases). In dev mode, configs are read from the project's `config/` directory (with fallback to `config.templates/`).
 
 ### Configuration Files
 
@@ -98,10 +101,8 @@ npm run electron:dev
 # Lint code
 npm run lint
 
-# Build for specific platform
+# Build for production
 npm run build:mac
-npm run build:win
-npm run build:linux
 ```
 
 ## Creating Modules
