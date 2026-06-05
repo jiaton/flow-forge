@@ -23,6 +23,7 @@ interface ServiceOrchestratorContentProps {
   onQuickCommand?: (service: Service, command: string) => void;
   onOpenTerminal?: (service: Service) => void;
   onRunRoutine?: (service: Service, actionKey: string, command: string) => void;
+  onOpenPatchManager?: (service: Service) => void;
   serviceStats?: Record<string, { cpu: number; memory: number }>;
   serviceBranches?: Record<string, string>;
 }
@@ -46,6 +47,7 @@ const ServiceOrchestratorContent: React.FC<ServiceOrchestratorContentProps> = ({
   onQuickCommand,
   onOpenTerminal,
   onRunRoutine,
+  onOpenPatchManager,
   serviceStats,
   serviceBranches,
 }) => {
@@ -59,6 +61,7 @@ const ServiceOrchestratorContent: React.FC<ServiceOrchestratorContentProps> = ({
           services={availableServices}
           orchestratedServiceIds={orchestratedServiceIds}
           onQuickCommand={onQuickCommand}
+          onOpenPatchManager={onOpenPatchManager}
         />
 
         <OrchestratedServices
@@ -79,6 +82,7 @@ const ServiceOrchestratorContent: React.FC<ServiceOrchestratorContentProps> = ({
           onQuickCommand={onQuickCommand}
           onOpenTerminal={onOpenTerminal}
           onRunRoutine={onRunRoutine}
+          onOpenPatchManager={onOpenPatchManager}
           serviceStats={serviceStats}
           serviceBranches={serviceBranches}
         />

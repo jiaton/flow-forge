@@ -13,6 +13,7 @@ interface AvailableServicesProps {
   services: Service[];
   orchestratedServiceIds: Set<string>;
   onQuickCommand?: (service: Service, command: string) => void;
+  onOpenPatchManager?: (service: Service) => void;
 }
 
 interface DraggableServiceCardProps {
@@ -78,6 +79,7 @@ const AvailableServices: React.FC<AvailableServicesProps> = ({
   services,
   orchestratedServiceIds,
   onQuickCommand,
+  onOpenPatchManager,
 }) => {
   const [contextMenu, setContextMenu] = useState<{
     service: Service;
@@ -138,6 +140,7 @@ const AvailableServices: React.FC<AvailableServicesProps> = ({
         onClose={() => setContextMenu(null)}
         isOrchestrated={false}
         onQuickCommand={onQuickCommand}
+        onOpenPatchManager={onOpenPatchManager}
       />
     </Box>
   );

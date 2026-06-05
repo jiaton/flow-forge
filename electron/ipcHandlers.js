@@ -491,6 +491,92 @@ function setupRoutineHandlers(mainWindow) {
   });
 }
 
+// Patch Management IPC Handlers
+function setupPatchHandlers() {
+  ipcMain.handle('patch:get-modified-files', async (event, { servicePath }) => {
+    const { getModifiedFiles } = await import('./service-orchestration/patches/index.js');
+    try {
+      const files = await getModifiedFiles(servicePath);
+      return { success: true, files };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('patch:create', async (event, { servicePath, serviceId, name, files, content }) => {
+    const { createPatch, validatePatch, savePatch } = await import('./service-orchestration/patches/index.js');
+    try {
+      const patchContent = content || await createPatch(servicePath, files);
+      const validation = validatePatch(patchContent);
+      if (!validation.valid) return { success: false, error: validation.error };
+      const patchPath = savePatch(serviceId, name, patchContent);
+      return { success: true, path: patchPath };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('patch:validate', async (event, { content }) => {
+    const { validatePatch } = await import('./service-orchestration/patches/index.js');
+    return validatePatch(content);
+  });
+
+  ipcMain.handle('patch:apply', async (event, { servicePath, patchPath }) => {
+    const { applyPatch } = await import('./service-orchestration/patches/index.js');
+    return await applyPatch(servicePath, patchPath);
+  });
+
+  ipcMain.handle('patch:apply-with-reject', async (event, { servicePath, patchPath }) => {
+    const { applyPatchWithReject } = await import('./service-orchestration/patches/index.js');
+    return await applyPatchWithReject(servicePath, patchPath);
+  });
+
+  ipcMain.handle('patch:unapply', async (event, { servicePath, patchPath }) => {
+    const { unapplyPatch } = await import('./service-orchestration/patches/index.js');
+    return await unapplyPatch(servicePath, patchPath);
+  });
+
+  ipcMain.handle('patch:list', async (event, { serviceId }) => {
+    const { listPersonalPatches } = await import('./service-orchestration/patches/index.js');
+    try {
+      const patches = listPersonalPatches(serviceId);
+      return { success: true, patches };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('patch:read', async (event, { patchPath }) => {
+    const { readPatch } = await import('./service-orchestration/patches/index.js');
+    try {
+      const content = readPatch(patchPath);
+      return { success: true, content };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('patch:delete', async (event, { serviceId, name }) => {
+    const { deletePatch } = await import('./service-orchestration/patches/index.js');
+    try {
+      deletePatch(serviceId, name);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('patch:skip-worktree', async (event, { servicePath, files, enable }) => {
+    const { setSkipWorktree } = await import('./service-orchestration/patches/index.js');
+    try {
+      await setSkipWorktree(servicePath, files, enable);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+}
+
 import { loadModuleHandlers } from './module-loader.js';
 import { configManager } from './utils/configManager.js';
 
@@ -502,6 +588,7 @@ export async function setupIpcHandlers(mainWindow) {
   setupLogLevelHandlers();
   setupPtyHandlers(mainWindow);
   setupRoutineHandlers(mainWindow);
+  setupPatchHandlers();
 
   // Auto-discover and load modular backend handlers
   await configManager.initializePaths();

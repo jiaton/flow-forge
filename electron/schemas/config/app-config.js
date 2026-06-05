@@ -79,6 +79,19 @@ export const UIConfigSchema = z.object({
   sidebar: SidebarSchema.optional(),
 }).strict();
 
+// Module definition schema
+export const ModuleDefinitionSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  version: z.string().optional(),
+  icon: z.string().optional(),
+  route: z.string().optional(),
+  enabled: z.boolean().optional(),
+  order: z.number().optional(),
+  teamSpecific: z.boolean().optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
+});
+
 // Main app config schema
 export const AppConfigSchema = z.object({
   app: AppInfoSchema,
@@ -86,6 +99,7 @@ export const AppConfigSchema = z.object({
   otherServices: OtherServicesSchema.optional(),
   features: FeaturesSchema.optional(),
   ui: UIConfigSchema.optional(),
+  modules: z.record(z.string(), ModuleDefinitionSchema).optional(),
 }).strict();
 
 // Helper to validate app config with better error messages

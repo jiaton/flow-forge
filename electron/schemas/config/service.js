@@ -20,6 +20,13 @@ export const QuickCommandSchema = z.object({
   category: z.string().optional(),
 });
 
+// Patch definition schema (team-defined patches)
+export const PatchDefinitionSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  file: z.string().min(1),
+});
+
 // Environments schema - flexible key-value map for any environment name
 // This is better than loose() because it validates that all values are strings
 export const ServiceEnvironmentsSchema = z.record(z.string(), z.string().optional());
@@ -52,6 +59,7 @@ export const ServiceSchema = z.object({
   quickCommands: z.array(QuickCommandSchema).optional(),
   environments: ServiceEnvironmentsSchema.optional(),
   routines: z.record(z.string(), z.string()).optional(),
+  patches: z.array(PatchDefinitionSchema).optional(),
 }).catchall(z.unknown()); // Allows service-specific metadata
 
 // Helper to validate service with better error messages

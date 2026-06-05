@@ -24,6 +24,7 @@ import {
   AutoMode,
   CloudDownload,
   BuildCircle,
+  Difference,
 } from '@mui/icons-material';
 import { Service } from './types';
 import { SERVICE_MODE, SUBMENU_TYPE, SubmenuType } from '../../shared/constants/service';
@@ -39,6 +40,9 @@ interface ServiceContextMenuProps {
   onToggleDetached?: (serviceId: string, detached: boolean) => void;
   onRunRoutine?: (service: Service, actionKey: string, command: string) => void;
   onDockerAction?: (service: Service, action: 'pull' | 'rebuild') => void;
+  onOpenPatchManager?: (service: Service) => void;
+  patches?: { name: string; active: boolean }[];
+  onPatchToggle?: (service: Service, patchName: string, active: boolean) => void;
 }
 
 const ServiceContextMenu: React.FC<ServiceContextMenuProps> = ({
@@ -51,6 +55,9 @@ const ServiceContextMenu: React.FC<ServiceContextMenuProps> = ({
   onToggleDetached,
   onRunRoutine,
   onDockerAction,
+  onOpenPatchManager,
+  patches,
+  onPatchToggle,
 }) => {
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -256,6 +263,55 @@ const ServiceContextMenu: React.FC<ServiceContextMenuProps> = ({
                         />
                       </MenuItem>
                     ))}
+                  </MenuList>
+                </Paper>
+              </Grow>
+            )}
+          </Popper>
+        </>
+      )}
+
+      {/* Patches */}
+      {onOpenPatchManager && (
+        <>
+          <Divider />
+          <MenuItem
+            onMouseEnter={(e) => openSubmenu(SUBMENU_TYPE.PATCHES, e.currentTarget)}
+            onMouseLeave={closeSubmenu}
+            selected={activeSubmenu?.type === SUBMENU_TYPE.PATCHES}
+          >
+            <ListItemIcon><Difference fontSize="small" /></ListItemIcon>
+            <ListItemText primary="Patches" />
+            <ChevronRight fontSize="small" sx={{ ml: 1, color: 'text.secondary' }} />
+          </MenuItem>
+          <Popper
+            open={activeSubmenu?.type === SUBMENU_TYPE.PATCHES}
+            anchorEl={activeSubmenu?.type === SUBMENU_TYPE.PATCHES ? activeSubmenu.anchor : null}
+            placement="right-start"
+            transition
+            sx={{ zIndex: 1400 }}
+          >
+            {({ TransitionProps }) => (
+              <Grow {...TransitionProps}>
+                <Paper elevation={8} onMouseEnter={keepSubmenu} onMouseLeave={closeSubmenu}>
+                  <MenuList dense>
+                    {patches && patches.length > 0 ? patches.map(p => (
+                      <MenuItem
+                        key={p.name}
+                        onClick={() => { clearSubmenu(); onClose(); onPatchToggle?.(service, p.name, !p.active); }}
+                      >
+                        <ListItemIcon>
+                          {p.active ? <PlayArrow fontSize="small" color="success" /> : <PlayArrow fontSize="small" sx={{ opacity: 0.3 }} />}
+                        </ListItemIcon>
+                        <ListItemText primary={p.name} secondary={p.active ? 'Active' : 'Inactive'} />
+                      </MenuItem>
+                    )) : (
+                      <MenuItem disabled><ListItemText primary="No patches" /></MenuItem>
+                    )}
+                    <Divider />
+                    <MenuItem onClick={() => { clearSubmenu(); onClose(); onOpenPatchManager(service); }}>
+                      <ListItemText primary="Manage Patches..." />
+                    </MenuItem>
                   </MenuList>
                 </Paper>
               </Grow>

@@ -293,6 +293,19 @@ declare global {
         getRunLog: (logFile: string) => Promise<{ success: boolean; content?: string; error?: string }>;
       };
 
+      // Patches API
+      patches: {
+        getModifiedFiles: (servicePath: string) => Promise<{ success: boolean; files?: string[]; error?: string }>;
+        create: (servicePath: string, serviceId: string, name: string, files?: string[], content?: string) => Promise<{ success: boolean; path?: string; error?: string }>;
+        validate: (content: string) => Promise<{ valid: boolean; error?: string }>;
+        apply: (servicePath: string, patchPath: string) => Promise<{ success: boolean; error?: string }>;
+        unapply: (servicePath: string, patchPath: string) => Promise<{ success: boolean; error?: string }>;
+        list: (serviceId: string) => Promise<{ success: boolean; patches?: Array<{ name: string; path: string; created: string }>; error?: string }>;
+        read: (patchPath: string) => Promise<{ success: boolean; content?: string; error?: string }>;
+        delete: (serviceId: string, name: string) => Promise<{ success: boolean; error?: string }>;
+        setSkipWorktree: (servicePath: string, files: string[], enable: boolean) => Promise<{ success: boolean; error?: string }>;
+      };
+
       // GitLab API
       gitlab: {
         settings: {

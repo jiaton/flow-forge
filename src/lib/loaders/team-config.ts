@@ -37,6 +37,7 @@ export interface ServiceDefinition {
   path?: string;
   commands?: ServiceCommands;
   environments?: Record<string, string>;
+  patches?: Array<{ name: string; description?: string; file: string }>;
 }
 
 export interface GlobalSettings {

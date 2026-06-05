@@ -181,6 +181,7 @@ export const SUBMENU_TYPE = {
   IDE: 'ide',
   QUICK_COMMANDS: 'quick',
   ROUTINES: 'routine',
+  PATCHES: 'patches',
 } as const;
 
 export type SubmenuType = typeof SUBMENU_TYPE[keyof typeof SUBMENU_TYPE];

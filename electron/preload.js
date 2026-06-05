@@ -139,6 +139,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getRunLog: (logFile) => ipcRenderer.invoke('routines:get-run-log', { logFile }),
   },
 
+  // Patches API
+  patches: {
+    getModifiedFiles: (servicePath) => ipcRenderer.invoke('patch:get-modified-files', { servicePath }),
+    create: (servicePath, serviceId, name, files, content) => ipcRenderer.invoke('patch:create', { servicePath, serviceId, name, files, content }),
+    validate: (content) => ipcRenderer.invoke('patch:validate', { content }),
+    apply: (servicePath, patchPath) => ipcRenderer.invoke('patch:apply', { servicePath, patchPath }),
+    applyWithReject: (servicePath, patchPath) => ipcRenderer.invoke('patch:apply-with-reject', { servicePath, patchPath }),
+    unapply: (servicePath, patchPath) => ipcRenderer.invoke('patch:unapply', { servicePath, patchPath }),
+    list: (serviceId) => ipcRenderer.invoke('patch:list', { serviceId }),
+    read: (patchPath) => ipcRenderer.invoke('patch:read', { patchPath }),
+    delete: (serviceId, name) => ipcRenderer.invoke('patch:delete', { serviceId, name }),
+    setSkipWorktree: (servicePath, files, enable) => ipcRenderer.invoke('patch:skip-worktree', { servicePath, files, enable }),
+  },
+
   // GitLab API
   gitlab: {
     settings: {

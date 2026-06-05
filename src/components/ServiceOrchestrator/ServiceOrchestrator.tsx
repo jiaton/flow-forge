@@ -12,6 +12,7 @@ import ServiceOrchestratorContent from './ServiceOrchestratorContent';
 import ServiceConfigDialog from './ServiceConfigDialog';
 import ServiceLogsDialog from './ServiceLogsDialog';
 import RoutinesDialog from './RoutinesDialog';
+import PatchManagerDialog from './PatchManagerDialog';
 import InteractiveTerminal from './InteractiveTerminal';
 import RoutineProgress from './RoutineProgress';
 import { ServiceManager } from '../../services/service-orchestrator/ServiceManager';
@@ -34,6 +35,7 @@ const ServiceOrchestrator: React.FC<ServiceOrchestratorProps> = ({ viewId }) => 
   // Service configuration dialog
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [showRoutinesDialog, setShowRoutinesDialog] = useState(false);
+  const [patchManagerServiceId, setPatchManagerServiceId] = useState<string | null>(null);
   const [serviceCommands, setServiceCommands] = useState<Record<string, unknown>>({});
 
   // Routine terminals (managed by hook)
@@ -195,6 +197,7 @@ const ServiceOrchestrator: React.FC<ServiceOrchestratorProps> = ({ viewId }) => 
         onQuickCommand={(service, command) => openInteractive(service, command)}
         onOpenTerminal={(service) => openInteractive(service)}
         onRunRoutine={(service, _actionKey, command) => openInteractive(service, command)}
+        onOpenPatchManager={(service) => setPatchManagerServiceId(service.id)}
         serviceStats={serviceStats}
         serviceBranches={serviceBranches}
       />
@@ -223,6 +226,14 @@ const ServiceOrchestrator: React.FC<ServiceOrchestratorProps> = ({ viewId }) => 
           rt.open({ id: routineId, name: routineId, script, commands: commands || [], logFile });
         }}
       />
+
+      {patchManagerServiceId && (
+        <PatchManagerDialog
+          open={true}
+          onClose={() => setPatchManagerServiceId(null)}
+          serviceId={patchManagerServiceId}
+        />
+      )}
 
       {/* Persistent routine terminals — each stays mounted when dialog is closed */}
       {Array.from(rt.terminals.values()).map(term => (
