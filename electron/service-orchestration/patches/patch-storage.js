@@ -1,104 +1,122 @@
 /**
- * Patch Storage — File system operations for patch files.
+ * Patch Storage - Persist file overrides for 3-way merge on re-apply.
  *
- * Personal patches: ~/.flowforge/patches/{service-id}/{name}.patch
- * Team patches: resolved from service config `patches` field
+ * Layout: ~/.flowforge/patches/<serviceId>/<patchName>/
+ *   <original/dir/structure/file>.mine  - your customized file content
+ *   <original/dir/structure/file>.base  - upstream content when override was saved
+ *   manifest.json                       - list of tracked relative paths
  */
 
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger('PatchStorage');
 
-const HOME = process.env.HOME || process.env.USERPROFILE || '';
-const PATCHES_DIR = path.join(HOME, '.flowforge', 'patches');
+const PATCHES_DIR = path.join(os.homedir(), '.flowforge', 'patches');
+const MANIFEST_FILE = 'manifest.json';
 
-function getServicePatchDir(serviceId) {
-  return path.join(PATCHES_DIR, serviceId);
+// Path helpers
+
+function getPatchDir(serviceId, patchName) {
+  return path.join(PATCHES_DIR, serviceId, patchName);
+}
+
+// Public API
+
+/**
+ * Save a set of file overrides as a named patch.
+ * @param {string} serviceId
+ * @param {string} patchName
+ * @param {Array} overrides - objects with { relPath, mine, base }
+ */
+export function savePatch(serviceId, patchName, overrides) {
+  const dir = getPatchDir(serviceId, patchName);
+
+  for (const { relPath, mine, base } of overrides) {
+    const fileDir = path.join(dir, path.dirname(relPath));
+    fs.mkdirSync(fileDir, { recursive: true });
+    const base_ = path.join(dir, relPath);
+    fs.writeFileSync(`${base_}.mine`, mine, 'utf8');
+    fs.writeFileSync(`${base_}.base`, base, 'utf8');
+  }
+
+  fs.writeFileSync(path.join(dir, MANIFEST_FILE), JSON.stringify(overrides.map(o => o.relPath), null, 2), 'utf8');
+  logger.info(`Saved patch "${patchName}" for ${serviceId} (${overrides.length} files)`);
 }
 
 /**
- * Save a patch file for a service.
+ * Load a named patch as override objects ready for applyOverrides().
  * @param {string} serviceId
- * @param {string} name - Patch name (used as filename, .patch appended)
- * @param {string} content - Unified diff content
- * @returns {string} Absolute path to saved patch file
+ * @param {string} patchName
+ * @returns {Array} objects with { relPath, mine, base }
  */
-export function savePatch(serviceId, name, content) {
-  const dir = getServicePatchDir(serviceId);
-  fs.mkdirSync(dir, { recursive: true });
-  const filename = name.endsWith('.patch') ? name : `${name}.patch`;
-  const filePath = path.join(dir, filename);
-  fs.writeFileSync(filePath, content, 'utf8');
-  logger.info(`Saved patch: ${filePath}`);
-  return filePath;
+export function loadPatch(serviceId, patchName) {
+  const dir = getPatchDir(serviceId, patchName);
+  const manifestPath = path.join(dir, MANIFEST_FILE);
+  if (!fs.existsSync(manifestPath)) throw new Error(`Patch not found: ${patchName}`);
+
+  const relPaths = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  return relPaths.map(relPath => {
+    const base_ = path.join(dir, relPath);
+    return {
+      relPath,
+      mine: fs.readFileSync(`${base_}.mine`, 'utf8'),
+      base: fs.readFileSync(`${base_}.base`, 'utf8'),
+    };
+  });
 }
 
 /**
- * List personal patches for a service.
+ * List saved patches for a service.
  * @param {string} serviceId
- * @returns {{ name: string, path: string, created: string }[]}
+ * @returns {object} name: string, files: string[], created: string }[]}
  */
-export function listPersonalPatches(serviceId) {
-  const dir = getServicePatchDir(serviceId);
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir)
-    .filter(f => f.endsWith('.patch'))
-    .map(f => {
-      const filePath = path.join(dir, f);
-      const stat = fs.statSync(filePath);
-      return {
-        name: f.replace(/\.patch$/, ''),
-        path: filePath,
-        created: stat.birthtime.toISOString(),
-      };
+export function listPatches(serviceId) {
+  const serviceDir = path.join(PATCHES_DIR, serviceId);
+  if (!fs.existsSync(serviceDir)) return [];
+
+  return fs.readdirSync(serviceDir, { withFileTypes: true })
+    .filter(d => d.isDirectory())
+    .map(d => {
+      const manifestPath = path.join(serviceDir, d.name, MANIFEST_FILE);
+      const files = fs.existsSync(manifestPath)
+        ? JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+        : [];
+      const stat = fs.statSync(path.join(serviceDir, d.name));
+      return { name: d.name, files, created: stat.birthtime.toISOString() };
     });
 }
 
 /**
- * Read patch file content.
- * @param {string} patchPath - Absolute path to patch file
- * @returns {string} Patch content
- */
-export function readPatch(patchPath) {
-  return fs.readFileSync(patchPath, 'utf8');
-}
-
-/**
- * Delete a personal patch file.
+ * Delete a named patch.
  * @param {string} serviceId
- * @param {string} name - Patch name (without .patch extension)
+ * @param {string} patchName
  */
-export function deletePatch(serviceId, name) {
-  const filename = name.endsWith('.patch') ? name : `${name}.patch`;
-  const filePath = path.join(getServicePatchDir(serviceId), filename);
-  if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
-    logger.info(`Deleted patch: ${filePath}`);
+export function deletePatch(serviceId, patchName) {
+  const dir = getPatchDir(serviceId, patchName);
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    logger.info(`Deleted patch "${patchName}" for ${serviceId}`);
   }
 }
 
 /**
- * Resolve team patch definitions from a service config's patches array.
- * @param {{ name: string, description?: string, file: string }[]} patchDefs - From service YAML
- * @param {string} configDir - Base config directory to resolve relative paths
- * @returns {{ name: string, description: string, path: string }[]}
+ * Resolve team patch definitions from service config.
+ * Team patches are stored as pre-built override directories.
+ * @param {object} name: string, description?: string, path: string }[]} patchDefs
+ * @returns {object} name: string, description: string, dir: string }[]}
  */
-export function resolveTeamPatches(patchDefs, configDir) {
+export function resolveTeamPatches(patchDefs) {
   if (!patchDefs?.length) return [];
   return patchDefs
     .map(def => {
-      const filePath = path.resolve(configDir, def.file);
-      if (!fs.existsSync(filePath)) {
-        logger.warn(`Team patch file not found: ${filePath}`);
+      if (!fs.existsSync(def.path)) {
+        logger.warn(`Team patch not found: ${def.path}`);
         return null;
       }
-      return {
-        name: def.name,
-        description: def.description || '',
-        path: filePath,
-      };
+      return { name: def.name, description: def.description || '', dir: def.path };
     })
     .filter(Boolean);
 }

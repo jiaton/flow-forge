@@ -1,22 +1,19 @@
 /**
- * PatchManagerDialog - Manage git patches for a service
+ * PatchManagerDialog - Manage file overrides for a service.
  *
- * Sections: Team Patches, My Patches
- * Views: List, Create, View patch content
+ * Patches use 3-way merge on apply — safe across upstream branch updates.
+ * Workflow: make local changes → Save Patch → pull upstream → Apply Patch.
  */
 
 import React, { useState, useEffect } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, IconButton, Button, Typography, Box,
-  Chip, Divider, Stack, TextField, Checkbox, FormControlLabel, Tab, Tabs,
-  Alert, Tooltip, CircularProgress,
+  Chip, Divider, Stack, TextField, Checkbox, FormControlLabel,
+  Alert, Tooltip, CircularProgress, Tabs, Tab,
 } from '@mui/material';
-import {
-  Close, Add, Visibility, Delete, PlayArrow, Stop,
-  VisibilityOff, ContentPaste, FolderOpen, Refresh,
-} from '@mui/icons-material';
+import { Close, Add, Delete, PlayArrow, Refresh, SettingsBackupRestore, ContentPaste } from '@mui/icons-material';
 import { usePatchManager, PatchInfo } from '../../hooks/service-orchestrator/usePatchManager';
-import { teamConfigLoader } from '../../lib/loaders/team-config';
+import { PATCH_SOURCE } from '../../shared/constants/patch';
 
 interface PatchManagerDialogProps {
   open: boolean;
@@ -24,204 +21,173 @@ interface PatchManagerDialogProps {
   serviceId: string;
 }
 
-type View = 'list' | 'create' | 'view';
+type View = 'list' | 'create';
 
 const PatchManagerDialog: React.FC<PatchManagerDialogProps> = ({ open, onClose, serviceId }) => {
   const {
-    patches, modifiedFiles, loading, error, servicePath,
-    loadModifiedFiles, createPatch, applyPatch, unapplyPatch,
-    deletePatch, toggleSkipWorktree, readPatchContent, refresh,
+    patches, modifiedFiles, loading, error, createPatch, applyPatch, resetToHead,
+    deletePatch, loadModifiedFiles, refresh,
   } = usePatchManager(serviceId);
 
   const [view, setView] = useState<View>('list');
-  const [viewContent, setViewContent] = useState('');
-  const [viewPatchName, setViewPatchName] = useState('');
-
-  // Create form state
-  const [createTab, setCreateTab] = useState(0); // 0=files, 1=paste
+  const [createTab, setCreateTab] = useState(0);
   const [patchName, setPatchName] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [conflictPatch, setConflictPatch] = useState<PatchInfo | null>(null);
   const [pasteContent, setPasteContent] = useState('');
-  const [validationError, setValidationError] = useState('');
+  const [parsedFiles, setParsedFiles] = useState<string[]>([]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [log, setLog] = useState<string[]>([]);
 
-  useEffect(() => {
-    if (open) refresh();
-  }, [open, refresh]);
+  const addLog = (msg: string) => setLog(prev => [...prev.slice(-19), `${new Date().toLocaleTimeString()} ${msg}`]);
+
+  useEffect(() => { if (open) refresh(); }, [open, refresh]);
 
   const handleOpenCreate = async () => {
-    setView('create');
     setPatchName('');
     setSelectedFiles(new Set());
     setPasteContent('');
-    setValidationError('');
+    setParsedFiles([]);
+    setCreateTab(0);
+    setActionError(null);
+    setView('create');
     await loadModifiedFiles();
   };
 
   const handleCreate = async () => {
-    if (!patchName.trim()) { setValidationError('Name is required'); return; }
+    if (!patchName.trim()) { setActionError('Name is required'); return; }
     setActionLoading('create');
-    let result;
-    if (createTab === 0) {
-      const files = selectedFiles.size > 0 ? Array.from(selectedFiles) : undefined;
-      result = await createPatch(patchName.trim(), files);
+    const isPaste = createTab === 1;
+    const files = isPaste ? undefined : (selectedFiles.size > 0 ? Array.from(selectedFiles) : undefined);
+    const content = isPaste ? pasteContent : undefined;
+    addLog(`Saving patch "${patchName}"...`);
+    const result = await createPatch(patchName.trim(), files, content);
+    setActionLoading(null);
+    if (result.success) {
+      addLog(`✓ Patch "${patchName}" saved (${result.files?.length ?? 0} files)`);
+      setView('list');
     } else {
-      // Validate pasted content first
-      const validation = await window.electronAPI.patches.validate(pasteContent);
-      if (!validation.valid) { setValidationError(validation.error || 'Invalid patch'); setActionLoading(null); return; }
-      result = await createPatch(patchName.trim(), undefined, pasteContent);
-    }
-    setActionLoading(null);
-    if (result.success) setView('list');
-    else setValidationError(result.error || 'Failed to create patch');
-  };
-
-  const handleView = async (patch: PatchInfo) => {
-    const content = await readPatchContent(patch);
-    setViewContent(content);
-    setViewPatchName(patch.name);
-    setView('view');
-  };
-
-  const handleOpenInIDE = (patch: PatchInfo) => {
-    const ideCmd = teamConfigLoader.getOpenIDECommand(serviceId);
-    if (ideCmd) {
-      // Open service repo root (for .rej conflict resolution), fall back to patch file
-      const target = servicePath || patch.path;
-      window.electronAPI.executeCommand(`${ideCmd} ${target}`);
+      addLog(`✗ Save failed: ${result.error}`);
+      setActionError(result.error || 'Failed to save patch');
     }
   };
 
-  const handleApplyToggle = async (patch: PatchInfo) => {
+  const handleApply = async (patch: PatchInfo) => {
     setActionLoading(patch.name);
-    setValidationError('');
-    setConflictPatch(null);
-    const result = patch.active ? await unapplyPatch(patch) : await applyPatch(patch);
+    setActionError(null);
+    addLog(`Applying "${patch.name}"...`);
+    const result = await applyPatch(patch);
     if (!result.success) {
-      setValidationError(`Failed to ${patch.active ? 'unapply' : 'apply'} "${patch.name}": ${result.error}`);
-      if (!patch.active) setConflictPatch(patch); // offer conflict resolution on apply failure
-    }
-    setActionLoading(null);
-  };
-
-  const handleApplyWithReject = async (patch: PatchInfo) => {
-    if (!servicePath) return;
-    setActionLoading(patch.name);
-    setValidationError('');
-    setConflictPatch(null);
-    const result = await window.electronAPI.patches.applyWithReject(servicePath, patch.path);
-    if (result.partial && result.rejFiles?.length) {
-      setValidationError(`Applied with conflicts. Resolve these .rej files:\n${result.rejFiles.join('\n')}`);
-    }
-    // IDEA supports `idea patch <file>` for a native Apply Patch dialog with merge UI.
-    // Other IDEs don't have an equivalent — just open the repo root so user can find .rej files.
-    const ideCmd = teamConfigLoader.getOpenIDECommand(serviceId);
-    if (ideCmd) {
-      const openCmd = /\bidea\b/i.test(ideCmd)
-        ? `idea patch '${patch.path}'`
-        : `${ideCmd.replace(/\s+\S+$/, '')} '${servicePath}'`;
-      window.electronAPI.executeCommand(openCmd);
-    }
-    setActionLoading(null);
-  };
-
-  const handleReapply = async (patch: PatchInfo) => {
-    setActionLoading(patch.name);
-    setValidationError('');
-    const unapplyResult = await unapplyPatch(patch);
-    if (!unapplyResult.success) {
-      setValidationError(`Failed to unapply before reapply: ${unapplyResult.error}`);
-      setActionLoading(null);
-      return;
-    }
-    const applyResult = await applyPatch({ ...patch, active: false });
-    if (!applyResult.success) {
-      setValidationError(`Unapplied but failed to reapply: ${applyResult.error}`);
+      addLog(`✗ Apply failed: ${result.error}`);
+      setActionError(`"${patch.name}" failed: ${result.error}`);
+    } else if (result.conflicts?.length) {
+      addLog(`⚠ Applied with conflicts: ${result.conflicts.join(', ')} — open in IDE to resolve`);
+      setActionError(`Conflicts in: ${result.conflicts.join(', ')} — open in IDE to resolve`);
+    } else {
+      addLog(`✓ "${patch.name}" applied`);
     }
     setActionLoading(null);
   };
 
   const handleDelete = async (patch: PatchInfo) => {
-    if (patch.active) await unapplyPatch(patch);
+    setActionLoading(patch.name);
+    addLog(`Deleting "${patch.name}"...`);
     await deletePatch(patch);
+    addLog(`✓ "${patch.name}" deleted`);
+    setActionLoading(null);
   };
 
-  const teamPatches = patches.filter(p => p.source === 'team');
-  const personalPatches = patches.filter(p => p.source === 'personal');
+  const handleResetToHead = async (patch: PatchInfo) => {
+    setActionLoading(patch.name);
+    setActionError(null);
+    addLog(`Resetting "${patch.name}" files to HEAD...`);
+    const result = await resetToHead(patch);
+    if (!result.success) {
+      addLog(`✗ Reset failed: ${result.error}`);
+      setActionError(result.error);
+    } else {
+      addLog(`✓ "${patch.name}" files reset to HEAD`);
+    }
+    setActionLoading(null);
+  };
 
-  // --- RENDER ---
+  const teamPatches = patches.filter(p => p.source === PATCH_SOURCE.TEAM);
+  const personalPatches = patches.filter(p => p.source === PATCH_SOURCE.PERSONAL);
 
   if (view === 'create') {
     return (
       <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
-          Create Patch
+          Save Patch
           <IconButton onClick={() => setView('list')} size="small"><Close /></IconButton>
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 2 }}>
           <TextField
-            label="Patch name"
-            value={patchName}
-            onChange={e => { setPatchName(e.target.value); setValidationError(''); }}
-            fullWidth size="small" sx={{ mb: 2 }}
-            placeholder="e.g. local-db-config"
+            label="Patch name" value={patchName} onChange={e => setPatchName(e.target.value)}
+            fullWidth size="small" sx={{ mb: 2 }} placeholder="e.g. local-db-config"
           />
-          <Tabs value={createTab} onChange={(_, v) => setCreateTab(v)} sx={{ mb: 2 }}>
-            <Tab icon={<FolderOpen />} iconPosition="start" label="From working changes" sx={{ textTransform: 'none' }} />
-            <Tab icon={<ContentPaste />} iconPosition="start" label="Paste patch" sx={{ textTransform: 'none' }} />
+          <Tabs value={createTab} onChange={(_, v) => { setCreateTab(v); setActionError(null); }} sx={{ mb: 2 }}>
+            <Tab label="From working changes" sx={{ textTransform: 'none', fontSize: '0.8rem' }} />
+            <Tab icon={<ContentPaste fontSize="small" />} iconPosition="start" label="Paste patch (IntelliJ)" sx={{ textTransform: 'none', fontSize: '0.8rem' }} />
           </Tabs>
 
           {createTab === 0 && (
-            <Box>
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Select files to include (leave all unchecked = all changes):
+              </Typography>
               {modifiedFiles.length === 0 ? (
-                <Typography color="text.secondary" variant="body2">No modified files found in this repo.</Typography>
+                <Typography color="text.secondary" variant="body2">No modified files found.</Typography>
               ) : (
-                <Box sx={{ maxHeight: 250, overflow: 'auto' }}>
+                <Box sx={{ maxHeight: 220, overflow: 'auto' }}>
                   {modifiedFiles.map(f => (
-                    <FormControlLabel
-                      key={f}
+                    <FormControlLabel key={f}
                       control={
-                        <Checkbox
-                          size="small"
-                          checked={selectedFiles.has(f)}
-                          onChange={() => {
-                            const next = new Set(selectedFiles);
-                            if (next.has(f)) next.delete(f); else next.add(f);
-                            setSelectedFiles(next);
-                          }}
-                        />
+                        <Checkbox size="small" checked={selectedFiles.has(f)} onChange={() => {
+                          const next = new Set(selectedFiles);
+                          if (next.has(f)) next.delete(f); else next.add(f);
+                          setSelectedFiles(next);
+                        }} />
                       }
                       label={<Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{f}</Typography>}
                     />
                   ))}
                 </Box>
               )}
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                Leave all unchecked to include all changes.
-              </Typography>
-            </Box>
+            </>
           )}
 
           {createTab === 1 && (
-            <TextField
-              multiline rows={8} fullWidth
-              placeholder="Paste unified diff content here..."
-              value={pasteContent}
-              onChange={e => { setPasteContent(e.target.value); setValidationError(''); }}
-              sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
-            />
+            <>
+              <TextField
+                multiline rows={6} fullWidth size="small"
+                placeholder={'Paste unified diff from IntelliJ "Copy as Patch"...\n\ndiff --git a/config/app.yaml b/config/app.yaml\n...'}
+                value={pasteContent}
+                onChange={e => {
+                  setPasteContent(e.target.value);
+                  setParsedFiles([...e.target.value.matchAll(/^\+\+\+ b\/(.+)$/gm)].map(m => m[1].trim()));
+                  setActionError(null);
+                }}
+                sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+              />
+              {parsedFiles.length > 0 && (
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Files detected ({parsedFiles.length}):
+                  </Typography>
+                  {parsedFiles.map(f => (
+                    <Typography key={f} variant="caption" display="block" sx={{ fontFamily: 'monospace', ml: 1 }}>{f}</Typography>
+                  ))}
+                </Box>
+              )}
+            </>
           )}
-
-          {validationError && <Alert severity="error" sx={{ mt: 2 }}>{validationError}</Alert>}
-
+          {actionError && <Alert severity="error" sx={{ mt: 2 }}>{actionError}</Alert>}
           <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2 }}>
             <Button onClick={() => setView('list')}>Cancel</Button>
-            <Button
-              variant="contained" onClick={handleCreate}
-              disabled={!!actionLoading || (createTab === 0 && modifiedFiles.length === 0) || (createTab === 1 && !pasteContent.trim())}
-            >
-              {actionLoading === 'create' ? <CircularProgress size={16} /> : 'Save Patch'}
+            <Button variant="contained" onClick={handleCreate}
+              disabled={!!actionLoading || (createTab === 1 && parsedFiles.length === 0)}>
+              {actionLoading === 'create' ? <CircularProgress size={16} /> : 'Save'}
             </Button>
           </Stack>
         </DialogContent>
@@ -229,63 +195,19 @@ const PatchManagerDialog: React.FC<PatchManagerDialogProps> = ({ open, onClose, 
     );
   }
 
-  if (view === 'view') {
-    return (
-      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
-          {viewPatchName}
-          <Stack direction="row" spacing={1}>
-            <Button size="small" onClick={() => {
-              const patch = patches.find(p => p.name === viewPatchName);
-              if (patch) handleOpenInIDE(patch);
-            }}>Open in IDE</Button>
-            <IconButton onClick={() => setView('list')} size="small"><Close /></IconButton>
-          </Stack>
-        </DialogTitle>
-        <DialogContent dividers sx={{ p: 0 }}>
-          <Box
-            component="pre"
-            sx={{
-              m: 0, p: 2, overflow: 'auto', maxHeight: 500,
-              fontSize: '0.75rem', fontFamily: 'monospace', lineHeight: 1.5,
-              '& .diff-add': { color: 'success.main', backgroundColor: 'action.hover' },
-              '& .diff-del': { color: 'error.main', backgroundColor: 'action.hover' },
-              '& .diff-hunk': { color: 'info.main' },
-            }}
-          >
-            {viewContent.split('\n').map((line, i) => {
-              let cls = '';
-              if (line.startsWith('+') && !line.startsWith('+++')) cls = 'diff-add';
-              else if (line.startsWith('-') && !line.startsWith('---')) cls = 'diff-del';
-              else if (line.startsWith('@@')) cls = 'diff-hunk';
-              return <div key={i} className={cls}>{line}</div>;
-            })}
-          </Box>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  // Default: list view
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
         Patch Manager
         <Stack direction="row" spacing={1} alignItems="center">
-          <Button size="small" startIcon={<Add />} onClick={handleOpenCreate}>Create</Button>
+          <Button size="small" startIcon={<Add />} onClick={handleOpenCreate}>New</Button>
           <IconButton onClick={onClose} size="small"><Close /></IconButton>
         </Stack>
       </DialogTitle>
       <DialogContent dividers sx={{ p: 0 }}>
-        {validationError && (
-          <Alert severity="error" sx={{ m: 1 }} onClose={() => { setValidationError(''); setConflictPatch(null); }}
-            action={conflictPatch && (
-              <Button size="small" color="inherit" onClick={() => handleApplyWithReject(conflictPatch)}>
-                Apply with conflicts
-              </Button>
-            )}
-          >
-            <Box sx={{ whiteSpace: 'pre-wrap' }}>{validationError}</Box>
+        {actionError && (
+          <Alert severity="warning" sx={{ m: 1 }} onClose={() => setActionError(null)}>
+            <Box sx={{ whiteSpace: 'pre-wrap' }}>{actionError}</Box>
           </Alert>
         )}
         {loading ? (
@@ -294,80 +216,83 @@ const PatchManagerDialog: React.FC<PatchManagerDialogProps> = ({ open, onClose, 
           <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>
         ) : patches.length === 0 ? (
           <Typography color="text.secondary" sx={{ p: 3, textAlign: 'center' }}>
-            No patches yet. Create one or define team patches in service config.
+            No patches. Create one to save local overrides.
           </Typography>
         ) : (
           <Stack divider={<Divider />}>
             {teamPatches.length > 0 && (
               <>
-                <Typography variant="overline" sx={{ px: 2, pt: 1, color: 'text.secondary' }}>Team Patches</Typography>
-                {teamPatches.map(p => <PatchRow key={p.name} patch={p} onApplyToggle={handleApplyToggle} onReapply={handleReapply} onView={handleView} onDelete={handleDelete} onToggleSkipWorktree={toggleSkipWorktree} actionLoading={actionLoading} />)}
+                <Typography variant="overline" sx={{ px: 2, pt: 1, color: 'text.secondary' }}>Team</Typography>
+                {teamPatches.map(p => (
+                  <PatchRow key={p.name} patch={p} onApply={handleApply} onResetToHead={handleResetToHead} onDelete={handleDelete} actionLoading={actionLoading} />
+                ))}
               </>
             )}
             {personalPatches.length > 0 && (
               <>
-                <Typography variant="overline" sx={{ px: 2, pt: 1, color: 'text.secondary' }}>My Patches</Typography>
-                {personalPatches.map(p => <PatchRow key={p.name} patch={p} onApplyToggle={handleApplyToggle} onReapply={handleReapply} onView={handleView} onDelete={handleDelete} onToggleSkipWorktree={toggleSkipWorktree} actionLoading={actionLoading} />)}
+                <Typography variant="overline" sx={{ px: 2, pt: 1, color: 'text.secondary' }}>Mine</Typography>
+                {personalPatches.map(p => (
+                  <PatchRow key={p.name} patch={p} onApply={handleApply} onResetToHead={handleResetToHead} onDelete={handleDelete} actionLoading={actionLoading} />
+                ))}
               </>
             )}
           </Stack>
         )}
       </DialogContent>
+      {log.length > 0 && (
+        <Box sx={{ px: 2, py: 1, borderTop: 1, borderColor: 'divider', maxHeight: 100, overflow: 'auto', bgcolor: 'action.hover' }}>
+          {log.map((entry, i) => (
+            <Typography key={i} variant="caption" display="block" sx={{ fontFamily: 'monospace', fontSize: '0.7rem', color: 'text.secondary' }}>
+              {entry}
+            </Typography>
+          ))}
+        </Box>
+      )}
     </Dialog>
   );
 };
 
-// --- Patch Row Component ---
-
 interface PatchRowProps {
   patch: PatchInfo;
-  onApplyToggle: (p: PatchInfo) => void;
-  onReapply: (p: PatchInfo) => void;
-  onView: (p: PatchInfo) => void;
+  onApply: (p: PatchInfo) => void;
+  onResetToHead: (p: PatchInfo) => void;
   onDelete: (p: PatchInfo) => void;
-  onToggleSkipWorktree: (p: PatchInfo) => void;
   actionLoading: string | null;
 }
 
-const PatchRow: React.FC<PatchRowProps> = ({ patch, onApplyToggle, onReapply, onView, onDelete, onToggleSkipWorktree, actionLoading }) => (
+const PatchRow: React.FC<PatchRowProps> = ({ patch, onApply, onResetToHead, onDelete, actionLoading }) => (
   <Box sx={{ px: 2, py: 1.5 }}>
     <Stack direction="row" alignItems="center" spacing={1}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" alignItems="center" spacing={0.5}>
           <Typography variant="subtitle2" noWrap>{patch.name}</Typography>
-          {patch.active && <Chip label="Active" size="small" color="success" sx={{ height: 18, fontSize: '0.65rem' }} />}
-          {patch.skipWorktree && (
-            <Tooltip title="Hidden from git status"><VisibilityOff sx={{ fontSize: 14, color: 'text.secondary' }} /></Tooltip>
-          )}
+          {patch.active && <Chip label="Applied" size="small" color="success" sx={{ height: 18, fontSize: '0.65rem' }} />}
         </Stack>
         {patch.description && <Typography variant="caption" color="text.secondary" noWrap>{patch.description}</Typography>}
+        {patch.files.length > 0 && (
+          <Typography variant="caption" color="text.secondary" noWrap>
+            {patch.files.slice(0, 3).join(', ')}{patch.files.length > 3 ? ` +${patch.files.length - 3} more` : ''}
+          </Typography>
+        )}
       </Box>
       <Stack direction="row" spacing={0.5}>
-        <Tooltip title={patch.active ? 'Unapply' : 'Apply'}>
-          <IconButton size="small" onClick={() => onApplyToggle(patch)} disabled={actionLoading === patch.name}>
-            {actionLoading === patch.name ? <CircularProgress size={14} /> : patch.active ? <Stop fontSize="small" /> : <PlayArrow fontSize="small" />}
+        <Tooltip title={patch.active ? 'Reapply' : 'Apply (3-way merge)'}>
+          <IconButton size="small" onClick={() => onApply(patch)} disabled={actionLoading === patch.name}>
+            {actionLoading === patch.name ? <CircularProgress size={14} /> : patch.active ? <Refresh fontSize="small" /> : <PlayArrow fontSize="small" />}
           </IconButton>
         </Tooltip>
         {patch.active && (
-          <Tooltip title="Reapply (unapply then apply again)">
-            <IconButton size="small" onClick={() => onReapply(patch)} disabled={actionLoading === patch.name}>
-              <Refresh fontSize="small" />
+          <Tooltip title="Reset to HEAD (discard patch, restore upstream)">
+            <IconButton size="small" onClick={() => onResetToHead(patch)} disabled={actionLoading === patch.name}>
+              <SettingsBackupRestore fontSize="small" />
             </IconButton>
           </Tooltip>
         )}
-        <Tooltip title="View diff">
-          <IconButton size="small" onClick={() => onView(patch)}><Visibility fontSize="small" /></IconButton>
-        </Tooltip>
-        {patch.active && (
-          <Tooltip title={patch.skipWorktree ? 'Show in git status' : 'Hide from git status'}>
-            <IconButton size="small" onClick={() => onToggleSkipWorktree(patch)}>
-              {patch.skipWorktree ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+        {patch.source === PATCH_SOURCE.PERSONAL && (
+          <Tooltip title="Delete patch">
+            <IconButton size="small" onClick={() => onDelete(patch)} color="error" disabled={actionLoading === patch.name}>
+              <Delete fontSize="small" />
             </IconButton>
-          </Tooltip>
-        )}
-        {patch.source === 'personal' && (
-          <Tooltip title="Delete">
-            <IconButton size="small" onClick={() => onDelete(patch)} color="error"><Delete fontSize="small" /></IconButton>
           </Tooltip>
         )}
       </Stack>

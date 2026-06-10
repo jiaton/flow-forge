@@ -1,35 +1,63 @@
 /**
- * Patch Manager — Git patch operations for service repositories.
+ * Patch Manager - Content-based 3-way merge for service repo customizations.
  *
- * Uses `shellLogin` (login shell mode) for git commands since git
- * may be installed via Homebrew/nvm and needs the user's PATH.
+ * Strategy: store (mine, base) per file. On apply, run `git merge-file`
+ * against current upstream - purely content-based, survives branch updates.
+ *
+ * Storage layout per override:
+ *   ~/.flowforge/patches/<serviceId>/<patchName>/<file>.mine   - your version
+ *   ~/.flowforge/patches/<serviceId>/<patchName>/<file>.base   - upstream when you saved
  */
 
-import { shellLogin } from '../execution/shell.js';
-import { createLogger } from '../../utils/logger.js';
+import fs from 'fs';
+import path from 'path';
 import os from 'os';
+import { execDirect } from '../execution/shell.js';
+import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger('PatchManager');
 
-const GIT_APPLY_FLAGS = '--whitespace=nowarn';
+// Git command constants
+const GIT = 'git';
 
-/** Resolve $HOME, ~, and env vars in a path */
+const GIT_CMDS = {
+  diffNameOnly:       ['diff', '--name-only'],
+  diffNameOnlyCached: ['diff', '--name-only', '--cached'],
+  show:               (ref) => ['show', ref],
+  mergeFile:          (current, base, other) => ['merge-file', '--diff3', current, base, other],
+  checkoutHead:       (files) => ['checkout', 'HEAD', '--', ...files],
+  stashPush:          (msg, files) => ['stash', 'push', '-m', msg, '--', ...files],
+  stashApply:         (ref) => ['stash', 'apply', ref],
+  stashDrop:          (ref) => ['stash', 'drop', ref],
+  stashList:          ['stash', 'list', '--format=%gd %s'],
+  lsFiles:            ['ls-files', '-v'],
+  updateIndexSkip:    (file) => ['update-index', '--skip-worktree', file],
+  updateIndexNoSkip:  (file) => ['update-index', '--no-skip-worktree', file],
+};
+
+// Path helpers
+
 function resolvePath(p) {
   if (!p) return p;
   return p.replace(/^\$HOME|^~/g, os.homedir()).replace(/\$HOME/g, os.homedir());
 }
 
+function git(args, options = {}) {
+  return execDirect(GIT, args, { timeout: 30000, maxBuffer: 10 * 1024 * 1024, ...options });
+}
+
+// Public API
+
 /**
- * Get list of modified (unstaged + staged) files in a git repo.
- * @param {string} servicePath - Absolute path to the service repo
- * @returns {Promise<string[]>} List of relative file paths
+ * Get list of modified files (staged + unstaged) in a git repo.
+ * @param {string} servicePath
+ * @returns {Promise<string[]>}
  */
 export async function getModifiedFiles(servicePath) {
   const cwd = resolvePath(servicePath);
-  // Include both staged and unstaged changes
   const [unstaged, staged] = await Promise.all([
-    shellLogin('git diff --name-only', { cwd }),
-    shellLogin('git diff --name-only --cached', { cwd }),
+    git(GIT_CMDS.diffNameOnly, { cwd }),
+    git(GIT_CMDS.diffNameOnlyCached, { cwd }),
   ]);
   const files = new Set([
     ...unstaged.stdout.trim().split('\n').filter(Boolean),
@@ -39,145 +67,158 @@ export async function getModifiedFiles(servicePath) {
 }
 
 /**
- * Create a unified diff patch from working tree changes.
- * @param {string} servicePath - Absolute path to the service repo
- * @param {string[]} [files] - Specific files to include (all if omitted)
- * @returns {Promise<string>} Unified diff content
+ * Read the current content of a file in the repo (HEAD version = upstream base).
+ * Uses a temp file to avoid stdout buffer limits on large files.
+ * @param {string} servicePath
+ * @param {string} relativeFile
+ * @returns {Promise<string>}
  */
-export async function createPatch(servicePath, files) {
-  const cwd = resolvePath(servicePath);
-  const fileArgs = files?.length ? `-- ${files.map(f => `'${f}'`).join(' ')}` : '';
-  // Capture both staged and unstaged changes
-  const [unstaged, staged] = await Promise.all([
-    shellLogin(`git diff ${fileArgs}`, { cwd, timeout: 30000 }),
-    shellLogin(`git diff --cached ${fileArgs}`, { cwd, timeout: 30000 }),
-  ]);
-  return unstaged.stdout + staged.stdout;
-}
-
-/**
- * Validate that content is a valid unified diff format.
- * Checks for `diff --git` or `---`/`+++` header patterns.
- * @param {string} content - Patch content to validate
- * @returns {{ valid: boolean, error?: string }}
- */
-export function validatePatch(content) {
-  if (!content || !content.trim()) {
-    return { valid: false, error: 'Patch content is empty' };
-  }
-  const lines = content.split('\n');
-  const hasDiffHeader = lines.some(l => l.startsWith('diff --git') || l.startsWith('diff --combined'));
-  const hasUnifiedHeader = lines.some(l => l.startsWith('---')) && lines.some(l => l.startsWith('+++'));
-  if (!hasDiffHeader && !hasUnifiedHeader) {
-    return { valid: false, error: 'Not a valid unified diff — missing diff/--- /+++ headers' };
-  }
-  return { valid: true };
-}
-
-/**
- * Apply a patch using --reject so conflicts produce .rej files instead of failing.
- * Returns the list of .rej files created so the caller can open them in an IDE.
- */
-export async function applyPatchWithReject(servicePath, patchPath) {
+export async function readHeadFile(servicePath, relativeFile) {
   const cwd = resolvePath(servicePath);
   try {
-    await shellLogin(`git apply ${GIT_APPLY_FLAGS} --reject '${patchPath}'`, { cwd, timeout: 30000 });
-    return { success: true, rejFiles: [] };
-  } catch (err) {
-    // --reject exits non-zero when there are conflicts, but still applies clean hunks
-    const { stdout } = await shellLogin('git ls-files --others --exclude-standard "*.rej"', { cwd }).catch(() => ({ stdout: '' }));
-    const rejFiles = stdout.trim().split('\n').filter(Boolean);
-    return { success: false, partial: true, rejFiles };
+    const { stdout } = await git(GIT_CMDS.show(`HEAD:${relativeFile}`), { cwd });
+    return stdout;
+  } catch {
+    // File does not exist in HEAD (new untracked file) — base is empty
+    return '';
   }
 }
 
 /**
- * Apply a patch file to a service repo.
- * If "does not match index", checks if patch is already applied (skip).
- * @param {string} servicePath - Absolute path to the service repo
- * @param {string} patchPath - Absolute path to the .patch file
- * @returns {Promise<{ success: boolean, error?: string, alreadyApplied?: boolean }>}
+ * Parse file paths from a unified diff (e.g. IntelliJ "Copy as Patch").
+ * Extracts +++ b/<file> lines — these are the files modified by the patch.
+ * @param {string} diffContent
+ * @returns {string[]} relative file paths
  */
-export async function applyPatch(servicePath, patchPath) {
-  const cwd = resolvePath(servicePath);
-  try {
-    await shellLogin(`git apply ${GIT_APPLY_FLAGS} '${patchPath}'`, { cwd, timeout: 30000 });
-    return { success: true };
-  } catch (err) {
-    const msg = err.stderr || err.message || '';
+export function parseFilesFromDiff(diffContent) {
+  return [...diffContent.matchAll(/^\+\+\+ b\/(.+)$/gm)].map(m => m[1].trim());
+}
 
-    // Check if patch is already applied (reverse-apply check passes cleanly)
-    if (msg.includes('does not match index') || msg.includes('patch does not apply') || msg.includes('already exists in working directory')) {
+
+ /** Reads the live file (mine) and HEAD version (base) for each.
+ * @param {string} servicePath
+ * @param {string[]} relPaths
+ * @returns {Promise<string[]>} resolves to array of override objects
+ */
+export async function captureOverrides(servicePath, relPaths) {
+  const cwd = resolvePath(servicePath);
+  return Promise.all(relPaths.map(async relPath => {
+    const mine = fs.readFileSync(path.join(cwd, relPath), 'utf8');
+    const base = await readHeadFile(servicePath, relPath);
+    return { relPath, mine, base };
+  }));
+}
+
+
+/* Apply a set of file overrides using 3-way merge.
+ * Clean merges are applied directly via git merge-file.
+ * Conflicted files go through a temporary stash so git marks them as
+ * conflicted in the index - IDE (IntelliJ, VS Code) will show the merge UI.
+ * The stash is dropped immediately after apply; it is only a transit mechanism.
+ *
+ * @param {string} servicePath
+ * @param {Array} overrides - objects with { relPath, mine, base }
+ * @returns {Promise<Array>} per-file results with { relPath, success, hasConflicts }
+ */
+export async function applyOverrides(servicePath, overrides) {
+  const cwd = resolvePath(servicePath);
+  const clean = [];
+  const conflicted = [];
+
+  // Phase 1: attempt merge-file for each file
+  for (const { relPath, mine, base } of overrides) {
+    const absPath = path.join(cwd, relPath);
+    const tmpMine = `${absPath}.ff-mine`;
+    const tmpBase = `${absPath}.ff-base`;
+    try {
+      fs.writeFileSync(tmpMine, mine, 'utf8');
+      fs.writeFileSync(tmpBase, base, 'utf8');
       try {
-        await shellLogin(`git apply ${GIT_APPLY_FLAGS} --check -R '${patchPath}'`, { cwd, timeout: 10000 });
-        logger.info('Patch already applied, skipping');
-        return { success: true, alreadyApplied: true };
+        await git(GIT_CMDS.mergeFile(absPath, tmpBase, tmpMine), { cwd });
+        clean.push({ relPath, success: true, hasConflicts: false });
       } catch {
-        // Not already applied — context mismatch (repo diverged from when patch was created)
+        // Conflict - restore file to HEAD, handle via stash in phase 2
+        await git(GIT_CMDS.checkoutHead([relPath]), { cwd });
+        conflicted.push({ relPath, mine });
+      }
+    } catch (err) {
+      logger.error(`applyOverrides failed for ${relPath}:`, err.message);
+      clean.push({ relPath, success: false, hasConflicts: false, error: err.message });
+    } finally {
+      if (fs.existsSync(tmpMine)) fs.unlinkSync(tmpMine);
+      if (fs.existsSync(tmpBase)) fs.unlinkSync(tmpBase);
+    }
+  }
+
+  if (!conflicted.length) return clean;
+
+  // Phase 2: for conflicted files, write mine into working tree, stash, apply back.
+  // This makes git mark them as conflicted in the index so IDEs show the merge UI.
+  // The stash is a transit mechanism only — dropped immediately after apply.
+  const stashMsg = `ff-patch-conflict-${Date.now()}`;
+  const realConflicts = [];
+  try {
+    for (const { relPath, mine } of conflicted) {
+      fs.writeFileSync(path.join(cwd, relPath), mine, 'utf8');
+    }
+    await git(GIT_CMDS.stashPush(stashMsg, conflicted.map(f => f.relPath)), { cwd });
+
+    const { stdout } = await git(GIT_CMDS.stashList, { cwd });
+    const stashRef = stdout.split('\n').find(l => l.includes(stashMsg))?.split(' ')[0];
+
+    if (stashRef) {
+      await git(GIT_CMDS.stashApply(stashRef), { cwd }).catch(() => {});
+      await git(GIT_CMDS.stashDrop(stashRef), { cwd });
+
+      // Only report conflict if file actually contains conflict markers
+      for (const { relPath } of conflicted) {
+        const content = fs.readFileSync(path.join(cwd, relPath), 'utf8');
+        if (content.includes('<<<<<<<')) realConflicts.push(relPath);
       }
     }
-
-    logger.error('applyPatch failed:', msg);
-    // Extract just the "patch does not apply" lines for a cleaner error
-    const failedFiles = msg.split('\n')
-      .filter(l => l.startsWith('error:') && l.includes('patch does not apply') || l.includes('does not match index'))
-      .map(l => l.replace(/^error:\s*/, '').replace(/: (patch does not apply|does not match index)$/, ''))
-      .filter(Boolean);
-    const userMsg = failedFiles.length
-      ? `Patch context mismatch — repo may have diverged. Affected files:\n${failedFiles.slice(0, 5).join('\n')}${failedFiles.length > 5 ? `\n…and ${failedFiles.length - 5} more` : ''}`
-      : msg;
-    return { success: false, error: userMsg };
-  }
-}
-
-/**
- * Unapply (reverse) a patch file from a service repo.
- * @param {string} servicePath - Absolute path to the service repo
- * @param {string} patchPath - Absolute path to the .patch file
- * @returns {Promise<{ success: boolean, error?: string }>}
- */
-export async function unapplyPatch(servicePath, patchPath) {
-  try {
-    const cwd = resolvePath(servicePath);
-    // Check if patch is actually applied before trying to reverse it
-    try {
-      await shellLogin(`git apply ${GIT_APPLY_FLAGS} --check -R '${patchPath}'`, { cwd, timeout: 10000 });
-    } catch {
-      // Reverse check failed — patch is not currently applied, nothing to do
-      logger.info('Patch not currently applied, skipping unapply');
-      return { success: true, alreadyUnapplied: true };
-    }
-    await shellLogin(`git apply -R ${GIT_APPLY_FLAGS} '${patchPath}'`, { cwd, timeout: 30000 });
-    return { success: true };
   } catch (err) {
-    const msg = err.stderr || err.message || 'Unknown error unapplying patch';
-    logger.error('unapplyPatch failed:', msg);
-    return { success: false, error: msg };
+    logger.error('stash conflict flow failed:', err.message);
   }
+
+  return [
+    ...clean,
+    ...conflicted.map(({ relPath }) => ({
+      relPath,
+      success: true,
+      hasConflicts: realConflicts.includes(relPath),
+    })),
+  ];
 }
 
 /**
- * Set or clear --skip-worktree flag on files.
- * @param {string} servicePath - Absolute path to the service repo
- * @param {string[]} files - Relative file paths
- * @param {boolean} enable - true to set, false to clear
+ * Reset files to HEAD version (discard working tree changes).
+ * @param {string} servicePath
+ * @param {string[]} relPaths
+ */
+export async function resetFilesToHead(servicePath, relPaths) {
+  const cwd = resolvePath(servicePath);
+  await git(GIT_CMDS.checkoutHead(relPaths), { cwd });
+}
+/** * @param {string} servicePath
+ * @param {string[]} files
+ * @param {boolean} enable
  */
 export async function setSkipWorktree(servicePath, files, enable) {
   const cwd = resolvePath(servicePath);
-  const flag = enable ? '--skip-worktree' : '--no-skip-worktree';
+  const buildArgs = enable ? GIT_CMDS.updateIndexSkip : GIT_CMDS.updateIndexNoSkip;
   for (const file of files) {
-    await shellLogin(`git update-index ${flag} '${file}'`, { cwd });
+    await git(buildArgs(file), { cwd });
   }
 }
 
 /**
  * Get files with --skip-worktree flag set.
- * @param {string} servicePath - Absolute path to the service repo
- * @returns {Promise<string[]>} Files with skip-worktree flag
+ * @param {string} servicePath
+ * @returns {Promise<string[]>}
  */
 export async function getSkipWorktreeFiles(servicePath) {
   const cwd = resolvePath(servicePath);
-  const { stdout } = await shellLogin('git ls-files -v', { cwd, timeout: 10000 });
+  const { stdout } = await git(GIT_CMDS.lsFiles, { cwd, timeout: 10000 });
   return stdout.split('\n')
     .filter(line => line.startsWith('S '))
     .map(line => line.slice(2));

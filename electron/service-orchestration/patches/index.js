@@ -1,18 +1,18 @@
 export {
   getModifiedFiles,
-  createPatch,
-  validatePatch,
-  applyPatch,
-  applyPatchWithReject,
-  unapplyPatch,
+  readHeadFile,
+  parseFilesFromDiff,
+  captureOverrides,
+  applyOverrides,
+  resetFilesToHead,
   setSkipWorktree,
   getSkipWorktreeFiles,
 } from './patch-manager.js';
 
 export {
   savePatch,
-  listPersonalPatches,
-  readPatch,
+  loadPatch,
+  listPatches,
   deletePatch,
   resolveTeamPatches,
 } from './patch-storage.js';

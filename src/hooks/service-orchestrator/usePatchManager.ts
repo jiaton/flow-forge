@@ -1,26 +1,28 @@
 /**
- * usePatchManager - Hook for managing git patches per service
+ * usePatchManager - Hook for managing file overrides per service.
+ *
+ * Uses 3-way merge strategy: each patch stores (mine + base) per file,
+ * so it survives upstream branch updates without context-line failures.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { teamConfigLoader } from '../../lib/loaders/team-config';
+import { PATCH_SOURCE, PatchSource } from '../../shared/constants/patch';
 
 export interface PatchInfo {
   name: string;
-  source: 'personal' | 'team';
-  path: string;
+  source: PatchSource;
+  files: string[];
   description?: string;
   active: boolean;
-  skipWorktree: boolean;
   appliedAt?: string;
   created?: string;
 }
 
 interface PatchState {
   name: string;
-  source: 'personal' | 'team';
+  source: PatchSource;
   active: boolean;
-  skipWorktree: boolean;
   appliedAt?: string;
 }
 
@@ -34,18 +36,15 @@ export function usePatchManager(serviceId: string) {
 
   const servicePath = teamConfigLoader.getServicePath(serviceId);
 
-  // Load persisted patch state from DB
   const loadPatchState = useCallback(async (): Promise<PatchState[]> => {
     const raw = await window.electronAPI?.db?.appSettings?.get(DB_KEY(serviceId));
     return raw || [];
   }, [serviceId]);
 
-  // Save patch state to DB
   const savePatchState = useCallback(async (states: PatchState[]) => {
     await window.electronAPI?.db?.appSettings?.set(DB_KEY(serviceId), states);
   }, [serviceId]);
 
-  // Load all patches (personal + team) and merge with persisted state
   const loadPatches = useCallback(async () => {
     if (!window.electronAPI?.patches) return;
     setLoading(true);
@@ -56,32 +55,28 @@ export function usePatchManager(serviceId: string) {
       ]);
 
       const personalPatches: PatchInfo[] = (personalResult?.patches || []).map(
-        (p: { name: string; path: string; created: string }) => {
-          const state = savedState.find(s => s.name === p.name && s.source === 'personal');
+        (p: { name: string; files: string[]; created: string }) => {
+          const state = savedState.find(s => s.name === p.name && s.source === PATCH_SOURCE.PERSONAL);
           return {
             name: p.name,
-            source: 'personal' as const,
-            path: p.path,
+            source: PATCH_SOURCE.PERSONAL as const,
+            files: p.files,
             active: state?.active || false,
-            skipWorktree: state?.skipWorktree || false,
             appliedAt: state?.appliedAt,
             created: p.created,
           };
         }
       );
 
-      // Team patches from service config (loaded via teamConfigLoader)
       const serviceConfig = teamConfigLoader.getService(serviceId);
-      const teamPatchDefs = serviceConfig?.patches;
-      const teamPatches: PatchInfo[] = (teamPatchDefs || []).map(def => {
-        const state = savedState.find(s => s.name === def.name && s.source === 'team');
+      const teamPatches: PatchInfo[] = (serviceConfig?.patches || []).map(def => {
+        const state = savedState.find(s => s.name === def.name && s.source === PATCH_SOURCE.TEAM);
         return {
           name: def.name,
-          source: 'team' as const,
-          path: def.file,
+          source: PATCH_SOURCE.TEAM as const,
+          files: [],
           description: def.description,
           active: state?.active || false,
-          skipWorktree: state?.skipWorktree || false,
           appliedAt: state?.appliedAt,
         };
       });
@@ -95,40 +90,39 @@ export function usePatchManager(serviceId: string) {
     }
   }, [serviceId, loadPatchState]);
 
-  // Load modified files for the file picker
   const loadModifiedFiles = useCallback(async () => {
     if (!servicePath || !window.electronAPI?.patches) return;
     try {
       const result = await window.electronAPI.patches.getModifiedFiles(servicePath);
       setModifiedFiles(result?.files || []);
-    } catch { /* silent */ }
+    } catch (err) {
+      console.warn('loadModifiedFiles failed:', (err as Error).message);
+    }
   }, [servicePath]);
 
   useEffect(() => { loadPatches(); }, [loadPatches]);
 
-  // Create a new personal patch
-  const createPatch = useCallback(async (
-    name: string,
-    files?: string[],
-    content?: string,
-  ) => {
+  // Capture current working tree changes as a named override set.
+  const createPatch = useCallback(async (name: string, files?: string[], content?: string) => {
     if (!servicePath) return { success: false, error: 'No service path' };
     const result = await window.electronAPI.patches.create(servicePath, serviceId, name, files, content);
     if (result.success) await loadPatches();
     return result;
   }, [servicePath, serviceId, loadPatches]);
 
-  // Apply a patch
+  // Apply using 3-way merge — survives upstream changes.
   const applyPatch = useCallback(async (patch: PatchInfo) => {
-    if (!servicePath) return { success: false, error: 'No service path configured for this service' };
+    if (!servicePath) return { success: false, error: 'No service path configured' };
     try {
-      const result = await window.electronAPI.patches.apply(servicePath, patch.path);
-      if (result.success) {
+      const result = await window.electronAPI.patches.apply(servicePath, serviceId, patch.name);
+      const fullyApplied = result.success && !result.conflicts?.length;
+      if (fullyApplied) {
         const states = await loadPatchState();
         const existing = states.find(s => s.name === patch.name && s.source === patch.source);
+        const entry = { name: patch.name, source: patch.source, active: true, appliedAt: new Date().toISOString() };
         const updated = existing
-          ? states.map(s => s === existing ? { ...s, active: true, appliedAt: new Date().toISOString() } : s)
-          : [...states, { name: patch.name, source: patch.source, active: true, skipWorktree: false, appliedAt: new Date().toISOString() }];
+          ? states.map(s => s === existing ? entry : s)
+          : [...states, entry];
         await savePatchState(updated);
         await loadPatches();
       }
@@ -136,74 +130,32 @@ export function usePatchManager(serviceId: string) {
     } catch (err) {
       return { success: false, error: `IPC error: ${(err as Error).message}` };
     }
-  }, [servicePath, loadPatchState, savePatchState, loadPatches]);
+  }, [servicePath, serviceId, loadPatchState, savePatchState, loadPatches]);
 
-  // Unapply a patch
-  const unapplyPatch = useCallback(async (patch: PatchInfo) => {
-    if (!servicePath) return { success: false, error: 'No service path configured for this service' };
+  const resetToHead = useCallback(async (patch: PatchInfo) => {
+    if (!servicePath) return { success: false, error: 'No service path configured' };
     try {
-      // Clear skip-worktree BEFORE unapplying — otherwise git can't see the files to reverse
-      if (patch.skipWorktree) {
-        const content = await window.electronAPI.patches.read(patch.path);
-        const affectedFiles = parseFilesFromPatch(content?.content || '');
-        if (affectedFiles.length) {
-          await window.electronAPI.patches.setSkipWorktree(servicePath, affectedFiles, false);
-        }
-      }
-      const result = await window.electronAPI.patches.unapply(servicePath, patch.path);
+      const result = await window.electronAPI.patches.resetToHead(servicePath, serviceId, patch.name);
       if (result.success) {
         const states = await loadPatchState();
-        const updated = states.map(s =>
-          s.name === patch.name && s.source === patch.source
-            ? { ...s, active: false, skipWorktree: false, appliedAt: undefined }
-            : s
-        );
-        await savePatchState(updated);
+        await savePatchState(states.map(s =>
+          s.name === patch.name && s.source === patch.source ? { ...s, active: false, appliedAt: undefined } : s
+        ));
         await loadPatches();
-      } else if (patch.skipWorktree) {
-        // Re-set skip-worktree if unapply failed
-        const content = await window.electronAPI.patches.read(patch.path);
-        const affectedFiles = parseFilesFromPatch(content?.content || '');
-        if (affectedFiles.length) {
-          await window.electronAPI.patches.setSkipWorktree(servicePath, affectedFiles, true);
-        }
       }
       return result;
     } catch (err) {
       return { success: false, error: `IPC error: ${(err as Error).message}` };
     }
-  }, [servicePath, loadPatchState, savePatchState, loadPatches]);
+  }, [servicePath, serviceId, loadPatchState, savePatchState, loadPatches]);
 
-  // Delete a personal patch
   const deletePatch = useCallback(async (patch: PatchInfo) => {
-    if (patch.source !== 'personal') return;
+    if (patch.source !== PATCH_SOURCE.PERSONAL) return;
     await window.electronAPI.patches.delete(serviceId, patch.name);
     const states = await loadPatchState();
-    await savePatchState(states.filter(s => !(s.name === patch.name && s.source === 'personal')));
+    await savePatchState(states.filter(s => !(s.name === patch.name && s.source === PATCH_SOURCE.PERSONAL)));
     await loadPatches();
   }, [serviceId, loadPatchState, savePatchState, loadPatches]);
-
-  // Toggle skip-worktree for a patch
-  const toggleSkipWorktree = useCallback(async (patch: PatchInfo) => {
-    if (!servicePath || !patch.active) return;
-    const content = await window.electronAPI.patches.read(patch.path);
-    const affectedFiles = parseFilesFromPatch(content?.content || '');
-    if (!affectedFiles.length) return;
-    const newValue = !patch.skipWorktree;
-    await window.electronAPI.patches.setSkipWorktree(servicePath, affectedFiles, newValue);
-    const states = await loadPatchState();
-    const updated = states.map(s =>
-      s.name === patch.name && s.source === patch.source ? { ...s, skipWorktree: newValue } : s
-    );
-    await savePatchState(updated);
-    await loadPatches();
-  }, [servicePath, loadPatchState, savePatchState, loadPatches]);
-
-  // Read patch content for viewing
-  const readPatchContent = useCallback(async (patch: PatchInfo): Promise<string> => {
-    const result = await window.electronAPI.patches.read(patch.path);
-    return result?.content || '';
-  }, []);
 
   return {
     patches,
@@ -214,21 +166,8 @@ export function usePatchManager(serviceId: string) {
     loadModifiedFiles,
     createPatch,
     applyPatch,
-    unapplyPatch,
+    resetToHead,
     deletePatch,
-    toggleSkipWorktree,
-    readPatchContent,
     refresh: loadPatches,
   };
-}
-
-/** Extract file paths from a unified diff */
-function parseFilesFromPatch(content: string): string[] {
-  const files: string[] = [];
-  for (const line of content.split('\n')) {
-    if (line.startsWith('+++ b/')) {
-      files.push(line.slice(6));
-    }
-  }
-  return files;
 }

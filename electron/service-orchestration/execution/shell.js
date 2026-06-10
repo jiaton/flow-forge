@@ -53,12 +53,13 @@ export async function shellLogin(command, options = {}) {
  * For system tools (ps, lsof, docker) where no shell env is needed.
  */
 export async function execDirect(bin, args = [], options = {}) {
-  const { cwd, env, timeout = 10000 } = options;
+  const { cwd, env, timeout = 10000, maxBuffer } = options;
   const { stdout, stderr } = await execFileAsync(bin, args, {
     cwd,
     env: { ...process.env, ...env },
     timeout,
     encoding: 'utf8',
+    ...(maxBuffer !== undefined && { maxBuffer }),
   });
   return { stdout, stderr };
 }

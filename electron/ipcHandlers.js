@@ -496,61 +496,59 @@ function setupPatchHandlers() {
   ipcMain.handle('patch:get-modified-files', async (event, { servicePath }) => {
     const { getModifiedFiles } = await import('./service-orchestration/patches/index.js');
     try {
-      const files = await getModifiedFiles(servicePath);
-      return { success: true, files };
+      return { success: true, files: await getModifiedFiles(servicePath) };
     } catch (err) {
       return { success: false, error: err.message };
     }
   });
 
+  // Save current working tree changes as a named override set (mine + base per file).
+  // `files` must be an array of relative paths to include.
   ipcMain.handle('patch:create', async (event, { servicePath, serviceId, name, files, content }) => {
-    const { createPatch, validatePatch, savePatch } = await import('./service-orchestration/patches/index.js');
+    const { getModifiedFiles, parseFilesFromDiff, captureOverrides, savePatch } = await import('./service-orchestration/patches/index.js');
     try {
-      const patchContent = content || await createPatch(servicePath, files);
-      const validation = validatePatch(patchContent);
-      if (!validation.valid) return { success: false, error: validation.error };
-      const patchPath = savePatch(serviceId, name, patchContent);
-      return { success: true, path: patchPath };
+      // If a diff is pasted, parse file list from it instead of reading modified files
+      const targetFiles = content
+        ? parseFilesFromDiff(content)
+        : (files?.length ? files : await getModifiedFiles(servicePath));
+      if (!targetFiles.length) return { success: false, error: content ? 'No files found in patch diff' : 'No modified files to save' };
+      const overrides = await captureOverrides(servicePath, targetFiles);
+      savePatch(serviceId, name, overrides);
+      return { success: true, files: targetFiles };
     } catch (err) {
       return { success: false, error: err.message };
     }
   });
 
-  ipcMain.handle('patch:validate', async (event, { content }) => {
-    const { validatePatch } = await import('./service-orchestration/patches/index.js');
-    return validatePatch(content);
+  // Apply a named patch using 3-way merge (content-based, survives branch updates).
+  ipcMain.handle('patch:apply', async (event, { servicePath, serviceId, name }) => {
+    const { applyOverrides, loadPatch } = await import('./service-orchestration/patches/index.js');
+    try {
+      const overrides = loadPatch(serviceId, name);
+      const results = await applyOverrides(servicePath, overrides);
+      const conflicts = results.filter(r => r.hasConflicts).map(r => r.relPath);
+      const failures  = results.filter(r => !r.success).map(r => r.relPath);
+      return { success: failures.length === 0, conflicts, failures };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
-  ipcMain.handle('patch:apply', async (event, { servicePath, patchPath }) => {
-    const { applyPatch } = await import('./service-orchestration/patches/index.js');
-    return await applyPatch(servicePath, patchPath);
-  });
-
-  ipcMain.handle('patch:apply-with-reject', async (event, { servicePath, patchPath }) => {
-    const { applyPatchWithReject } = await import('./service-orchestration/patches/index.js');
-    return await applyPatchWithReject(servicePath, patchPath);
-  });
-
-  ipcMain.handle('patch:unapply', async (event, { servicePath, patchPath }) => {
-    const { unapplyPatch } = await import('./service-orchestration/patches/index.js');
-    return await unapplyPatch(servicePath, patchPath);
+  ipcMain.handle('patch:reset-to-head', async (event, { servicePath, serviceId, name }) => {
+    const { loadPatch, resetFilesToHead } = await import('./service-orchestration/patches/index.js');
+    try {
+      const overrides = loadPatch(serviceId, name);
+      await resetFilesToHead(servicePath, overrides.map(o => o.relPath));
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   ipcMain.handle('patch:list', async (event, { serviceId }) => {
-    const { listPersonalPatches } = await import('./service-orchestration/patches/index.js');
+    const { listPatches } = await import('./service-orchestration/patches/index.js');
     try {
-      const patches = listPersonalPatches(serviceId);
-      return { success: true, patches };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  });
-
-  ipcMain.handle('patch:read', async (event, { patchPath }) => {
-    const { readPatch } = await import('./service-orchestration/patches/index.js');
-    try {
-      const content = readPatch(patchPath);
-      return { success: true, content };
+      return { success: true, patches: listPatches(serviceId) };
     } catch (err) {
       return { success: false, error: err.message };
     }

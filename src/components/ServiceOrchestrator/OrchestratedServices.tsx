@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Paper,
@@ -78,30 +78,7 @@ const OrchestratedServices: React.FC<OrchestratedServicesProps> = ({
     position: { top: number; left: number };
   } | null>(null);
 
-  const [contextMenuPatches, setContextMenuPatches] = useState<{ name: string; active: boolean }[]>([]);
 
-  // Load patches when context menu opens for a service
-  useEffect(() => {
-    if (!contextMenu) { setContextMenuPatches([]); return; }
-    const serviceId = contextMenu.service.id;
-    (async () => {
-      try {
-        const [listResult, stateRaw] = await Promise.all([
-          window.electronAPI?.patches?.list(serviceId),
-          window.electronAPI?.db?.appSettings?.get(`patchState:${serviceId}`),
-        ]);
-        const states: { name: string; active: boolean }[] = stateRaw || [];
-        const serviceConfig = teamConfigLoader.getService(serviceId);
-        const teamDefs = (serviceConfig?.patches || []) as { name: string }[];
-        const personal = (listResult?.patches || []) as { name: string }[];
-        const all = [
-          ...teamDefs.map(d => ({ name: d.name, active: states.find(s => s.name === d.name)?.active || false })),
-          ...personal.map(p => ({ name: p.name, active: states.find(s => s.name === p.name)?.active || false })),
-        ];
-        setContextMenuPatches(all);
-      } catch { setContextMenuPatches([]); }
-    })();
-  }, [contextMenu]);
 
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: DRAG_TYPE,
@@ -409,7 +386,6 @@ const OrchestratedServices: React.FC<OrchestratedServicesProps> = ({
         onToggleDetached={onToggleDetached}
         onRunRoutine={onRunRoutine}
         onOpenPatchManager={onOpenPatchManager}
-        patches={contextMenuPatches}
         onDockerAction={(service, action) => {
           if (window.electronAPI) {
             if (action === 'pull') window.electronAPI.dockerPull(service.id);
