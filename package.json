@@ -1,6 +1,6 @@
 {
   "name": "flow-forge",
-  "version": "2.0.1",
+  "version": "2.2.0",
   "description": "A modular, company-agnostic process orchestration and workflow management platform built with Electron, React, and TypeScript",
   "private": false,
   "license": "MIT",
